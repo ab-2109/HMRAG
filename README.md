@@ -11,6 +11,7 @@
 
 ## News
 **`[2025/06/26]`** HM-RAG is accepted by **ACM MM2025**!
+
 `[2025/04/13]`🎉🎉 Release our paper: [HM-RAG: Hierarchical Multi-Agent Multimodal Retrieval Augmented Generation](https://arxiv.org/abs/2504.12330).
 
 ## Release Plan
