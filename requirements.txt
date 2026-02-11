@@ -6,6 +6,10 @@ asyncpg
 graspologic
 gremlinpython
 hnswlib
+langchain
+langchain-community
+langchain-core
+lightrag-hku
 nano-vectordb
 neo4j
 networkx
@@ -29,10 +33,9 @@ torch
 tqdm
 transformers
 xxhash
-clip-interrogator==0.6.0
-deepspeed
 qwen_vl_utils
 opencv-python
 termcolor
 bitsandbytes
 nltk
+google-search-results

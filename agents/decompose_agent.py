@@ -1,60 +1,46 @@
 import os
-from dataclasses import dataclass
-from typing import List, Dict, Optional, Callable
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.chains import LLMChain
+from typing import List
 from langchain.prompts import PromptTemplate
-from langchain_community.llms import Ollama  # Import the Ollama class
-
-from langchain.agents import AgentExecutor, AgentType, initialize_agent
-from langchain.tools import Tool
+from langchain_community.llms import Ollama
 
 
 class DecomposeAgent:
     def __init__(self, config):
         self.config = config
-        # Use Ollama to connect to the locally deployed Qwen2.5-7B model
+        # Use Ollama to connect to the locally deployed model
         self.llm = Ollama(
-            model="qwen2.5:7b",  # Ensure the model name in Ollama is correct
-            temperature=0.35
-        )
-        self.tools = [
-            Tool(
-                name="Decompose",
-                func=self.decompose,
-                description="Decompose the query into sub-queries.",
-            )
-        ]
-        self.agent = initialize_agent(
-            tools=self.tools,
-            llm=self.llm,
-            agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=True,
+            base_url=getattr(config, 'ollama_base_url', 'http://localhost:11434'),
+            model=getattr(config, 'llm_model_name', 'qwen2.5:7b'),
+            temperature=getattr(config, 'temperature', 0.35),
         )
 
     def count_intents(self, query: str) -> int:
         """
         Determine the number of intents in the input query.
-        Use LLM to analyze the number of intents contained in the input text.
+        Uses LLM to analyze the number of intents contained in the input text.
         Args:
             query (str): The input query text.
         Returns:
             int: The number of intents.
         """
-        # Clearly specify the prompt format
         prompt = PromptTemplate.from_template(
-            "Please calculate how many independent intents are contained in the following query. Return only an integer:\n{query}\nNumber of intents: "
+            "Please calculate how many independent intents are contained in the following query. "
+            "Return only an integer:\n{query}\nNumber of intents: "
         )
         max_attempts = 3
         for attempt in range(max_attempts):
-            chain = LLMChain(llm=self.llm, prompt=prompt)
-            response = chain.run(query=query)
+            formatted_prompt = prompt.format(query=query)
+            response = self.llm.invoke(formatted_prompt)
             try:
-                return int(response.strip())
-            except ValueError:
-                if attempt == max_attempts - 1:
-                    return 1  # If parsing fails after multiple attempts, default to 1 intent
+                # Extract first integer from response
+                import re
+                numbers = re.findall(r'\d+', response.strip())
+                if numbers:
+                    return int(numbers[0])
+            except (ValueError, IndexError):
+                pass
+            if attempt == max_attempts - 1:
+                return 1  # Default to 1 intent if parsing fails
         return 1
 
     def decompose(self, query: str) -> List[str]:
@@ -63,14 +49,13 @@ class DecomposeAgent:
         Args:
             query (str): The input query text.
         Returns:
-            List[str]: A list of decomposed sub-queries.
+            List[str]: A list of decomposed sub-queries, or a single-element list.
         """
         intent_count = self.count_intents(query)
-        intent_count = min(intent_count, 3)  # Limit the number of intents to a maximum of 5
+        intent_count = min(intent_count, 3)  # Limit the number of intents to a maximum of 3
         if intent_count > 1:
             return self._split_query(query)
-        # return [query]
-        return query
+        return [query]
 
     def _split_query(self, query: str) -> List[str]:
         """
@@ -81,25 +66,13 @@ class DecomposeAgent:
             List[str]: A list of decomposed sub-queries.
         """
         prompt = PromptTemplate.from_template(
-            "Split the following query into multiple independent sub-queries, separated by '||', without additional explanations:\n{query}\nList of sub-queries: "
+            "Split the following query into multiple independent sub-queries, "
+            "separated by '||', without additional explanations:\n{query}\nList of sub-queries: "
         )
-        chain = LLMChain(llm=self.llm, prompt=prompt)
-        response = chain.run(query=query)
-        return [q.strip() for q in response.split("||") if q.strip()]
-
-
-# def run_decomposition(agent: DecomposeAgent, query: str) -> List[str]:
-#     return agent.decompose(query)
-
-
-# # ---------------------- Run tests ----------------------
-# if __name__ == "__main__":
-#     class MockConfig:
-#         pass
-#     config = MockConfig()
-#     agent = DecomposeAgent(config)
-#     query = "Check today's weather in Shanghai, then summarize the latest scientific research news from Fudan University, and finally compare the advantages and disadvantages of Python and Java."
-#     subqueries = run_decomposition(agent, query)
-#     print("Decomposed sub-queries:")
-#     for i, subq in enumerate(subqueries, 1):
-#         print(f"{i}. {subq}")
+        formatted_prompt = prompt.format(query=query)
+        response = self.llm.invoke(formatted_prompt)
+        sub_queries = [q.strip() for q in response.split("||") if q.strip()]
+        # If splitting failed, return the original query
+        if not sub_queries:
+            return [query]
+        return sub_queries

@@ -97,16 +97,20 @@ def build_prompt(problems, shot_qids, test_qid, args):
 
     examples = []
 
+    use_caption = getattr(args, 'use_caption', False)
+    options = getattr(args, 'options', ["A", "B", "C", "D", "E"])
+    prompt_format = getattr(args, 'prompt_format', 'CQM-A')
+
     # n-shot training examples
     for qid in shot_qids:
         question = get_question_text(problems[qid])
-        context = get_context_text(problems[qid], args.use_caption)
-        choice = get_choice_text(problems[qid], args.options)
-        answer = get_answer(problems[qid], args.options)
+        context = get_context_text(problems[qid], use_caption)
+        choice = get_choice_text(problems[qid], options)
+        answer = get_answer(problems[qid], options)
         lecture = get_lecture_text(problems[qid])
         solution = get_solution_text(problems[qid])
 
-        train_example = create_one_example(args.prompt_format,
+        train_example = create_one_example(prompt_format,
                                            question,
                                            context,
                                            choice,
@@ -118,13 +122,13 @@ def build_prompt(problems, shot_qids, test_qid, args):
 
     # test example
     question = get_question_text(problems[test_qid])
-    context = get_context_text(problems[test_qid], args.use_caption)
-    choice = get_choice_text(problems[test_qid], args.options)
-    answer = get_answer(problems[test_qid], args.options)
+    context = get_context_text(problems[test_qid], use_caption)
+    choice = get_choice_text(problems[test_qid], options)
+    answer = get_answer(problems[test_qid], options)
     lecture = get_lecture_text(problems[test_qid])
     solution = get_solution_text(problems[test_qid])
 
-    test_example = create_one_example(args.prompt_format,
+    test_example = create_one_example(prompt_format,
                                       question,
                                       context,
                                       choice,
