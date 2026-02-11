@@ -19,7 +19,7 @@ class GraphRetrieval(BaseRetrieval):
             llm_model_func=ollama_model_complete,
             llm_model_name=model_name,
             llm_model_max_async=160,
-            llm_model_max_token_size=65536,
+            # llm_model_max_token_size=65536,
             llm_model_kwargs={"host": ollama_host, "options": {"num_ctx": 65536}},
             embedding_func=EmbeddingFunc(
                 embedding_dim=768,
