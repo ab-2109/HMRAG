@@ -1,5 +1,5 @@
 from collections import Counter
-from langchain_community.llms.ollama import Ollama
+from langchain_ollama import OllamaLLM
 import re
 from transformers import AutoProcessor
 import random
@@ -11,7 +11,7 @@ from prompts.base_prompt import build_prompt
 class SummaryAgent:
     def __init__(self, config):
         self.config = config
-        self.text_llm = Ollama(
+        self.text_llm = OllamaLLM(
             base_url=getattr(config, 'ollama_base_url', 'http://localhost:11434'),
             model=getattr(config, 'llm_model_name', 'qwen2.5:7b')
         )

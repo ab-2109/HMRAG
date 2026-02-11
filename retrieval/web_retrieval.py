@@ -1,5 +1,5 @@
 from langchain_community.utilities import SerpAPIWrapper
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 
 from retrieval.base_retrieval import BaseRetrieval
 
@@ -18,7 +18,7 @@ class WebRetrieval(BaseRetrieval):
             serpapi_api_key=serpapi_api_key
         )
 
-        self.llm = Ollama(
+        self.llm = OllamaLLM(
             base_url=ollama_base_url,
             model=web_llm_model,
             temperature=0.35,

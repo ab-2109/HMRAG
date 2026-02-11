@@ -1,14 +1,14 @@
 import os
 from typing import List
 from langchain_core.prompts import PromptTemplate
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 
 
 class DecomposeAgent:
     def __init__(self, config):
         self.config = config
         # Use Ollama to connect to the locally deployed model
-        self.llm = Ollama(
+        self.llm = OllamaLLM(
             base_url=getattr(config, 'ollama_base_url', 'http://localhost:11434'),
             model=getattr(config, 'llm_model_name', 'qwen2.5:7b'),
             temperature=getattr(config, 'temperature', 0.35),
