@@ -22,7 +22,7 @@ class GraphRetrieval(BaseRetrieval):
             # llm_model_max_token_size=65536,
             llm_model_kwargs={"host": ollama_host, "options": {"num_ctx": 65536}},
             embedding_func=EmbeddingFunc(
-                embedding_dim=1024,
+                embedding_dim=768,
                 max_token_size=8192,
                 func=lambda texts: ollama_embed(
                     texts, embed_model="nomic-embed-text", host=ollama_host
