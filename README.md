@@ -54,8 +54,10 @@ We utilize LightRAG, a lightweight framework to construct MMKGs. For comprehensi
 
 ### Multi-Agent Inference
 ```bash
-python main.py --working_dir  --serper_api_key  --openai_key
+python main.py --working_dir <path> --serpapi_api_key <key>
 ```
+
+Note: OpenAI API key is not required. The system uses Ollama for LLM inference.
 
 
 ### Zero-Shot Multimodal Question Answering

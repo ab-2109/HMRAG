@@ -1,4 +1,4 @@
-from langchain_community.utilities import GoogleSerperAPIWrapper
+from langchain_community.utilities import SerpAPIWrapper
 from langchain_community.llms import Ollama
 
 from retrieval.base_retrieval import BaseRetrieval
@@ -9,16 +9,13 @@ class WebRetrieval(BaseRetrieval):
         self.config = config
         self.search_engine = "Google"
         
-        serper_api_key = getattr(config, 'serper_api_key', '')
+        serpapi_api_key = getattr(config, 'serpapi_api_key', '')
         self.top_k = getattr(config, 'top_k', 4)
         ollama_base_url = getattr(config, 'ollama_base_url', 'http://localhost:11434')
         web_llm_model = getattr(config, 'web_llm_model_name', 'qwen2.5:7b')
 
-        self.client = GoogleSerperAPIWrapper(
-            serper_api_key=serper_api_key,
-            gl="us",
-            hl="en",
-            k=self.top_k
+        self.client = SerpAPIWrapper(
+            serpapi_api_key=serpapi_api_key
         )
 
         self.llm = Ollama(

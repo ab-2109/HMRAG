@@ -48,20 +48,20 @@ def parse_args():
                         help='Working directory for LightRAG')
     parser.add_argument('--llm_model_name', type=str, default='qwen2.5:7b')
     parser.add_argument('--mode', type=str, default='hybrid')
-    parser.add_argument('--serper_api_key', type=str, default='',
-                        help='API key for Google Serper web search')
+    parser.add_argument('--serpapi_api_key', type=str, default='',
+                        help='API key for SerpAPI web search')
     parser.add_argument('--web_llm_model_name', type=str, default='qwen2.5:7b',
                         help='LLM model name for web retrieval generation')
     parser.add_argument('--top_k', type=int, default=4)
-    # GPT settings
-    parser.add_argument('--openai_key', type=str, default='')
-    parser.add_argument('--engine', type=str, default='gpt-4o')
-    parser.add_argument('--temperature', type=float, default=0.0)
-    parser.add_argument('--max_tokens',
-                        type=int,
-                        default=512,
-                        help='The maximum number of tokens allowed for the generated answer.')
-    # Ollama settings
+    # GPT/OpenAI settings (OPTIONAL - not currently used, system uses Ollama)
+    # parser.add_argument('--openai_key', type=str, default='')
+    # parser.add_argument('--engine', type=str, default='gpt-4o')
+    # parser.add_argument('--temperature', type=float, default=0.0)
+    # parser.add_argument('--max_tokens',
+    #                     type=int,
+    #                     default=512,
+    #                     help='The maximum number of tokens allowed for the generated answer.')
+    # Ollama settings (REQUIRED)
     parser.add_argument('--ollama_base_url', type=str, default='http://localhost:11434',
                         help='Base URL for Ollama server')
 
