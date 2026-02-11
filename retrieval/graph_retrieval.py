@@ -24,7 +24,7 @@ class GraphRetrieval(BaseRetrieval):
             embedding_func=EmbeddingFunc(
                 embedding_dim=768,
                 max_token_size=8192,
-                func=lambda texts: ollama_embed(
+                func=lambda texts: ollama_embed.func(
                     texts, embed_model="nomic-embed-text", host=ollama_host
                 ),
             ),
