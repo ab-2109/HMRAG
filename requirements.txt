@@ -6,9 +6,11 @@ asyncpg
 graspologic
 gremlinpython
 hnswlib
+huggingface_hub
 langchain
 langchain-community
 langchain-core
+langchain-ollama
 lightrag-hku
 nano-vectordb
 neo4j

@@ -1,4 +1,4 @@
-llm_model_name: "qwen2.5:7b"
+llm_model_name: "qwen2.5:1.5b"
 temperature: 0.0
 max_tokens: 512
 max_intents: 3

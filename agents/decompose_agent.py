@@ -10,7 +10,7 @@ class DecomposeAgent:
         # Use Ollama to connect to the locally deployed model
         self.llm = OllamaLLM(
             base_url=getattr(config, 'ollama_base_url', 'http://localhost:11434'),
-            model=getattr(config, 'llm_model_name', 'qwen2.5:7b'),
+            model=getattr(config, 'llm_model_name', 'qwen2.5:1.5b'),
             temperature=getattr(config, 'temperature', 0.35),
         )
 

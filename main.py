@@ -46,21 +46,15 @@ def parse_args():
     # VectorRetrieval / LightRAG settings
     parser.add_argument('--working_dir', type=str, default='./lightrag_workdir',
                         help='Working directory for LightRAG')
-    parser.add_argument('--llm_model_name', type=str, default='qwen2.5:7b')
+    parser.add_argument('--llm_model_name', type=str, default='qwen2.5:1.5b')
     parser.add_argument('--mode', type=str, default='hybrid')
     parser.add_argument('--serpapi_api_key', type=str, default='',
                         help='API key for SerpAPI web search')
-    parser.add_argument('--web_llm_model_name', type=str, default='qwen2.5:7b',
+    parser.add_argument('--web_llm_model_name', type=str, default='qwen2.5:1.5b',
                         help='LLM model name for web retrieval generation')
     parser.add_argument('--top_k', type=int, default=4)
-    # GPT/OpenAI settings (OPTIONAL - not currently used, system uses Ollama)
-    # parser.add_argument('--openai_key', type=str, default='')
-    # parser.add_argument('--engine', type=str, default='gpt-4o')
-    # parser.add_argument('--temperature', type=float, default=0.0)
-    # parser.add_argument('--max_tokens',
-    #                     type=int,
-    #                     default=512,
-    #                     help='The maximum number of tokens allowed for the generated answer.')
+    parser.add_argument('--hf_token', type=str, default='',
+                        help='Hugging Face access token for downloading gated models')
     # Ollama settings (REQUIRED)
     parser.add_argument('--ollama_base_url', type=str, default='http://localhost:11434',
                         help='Base URL for Ollama server')
@@ -116,6 +110,18 @@ def main():
     result_file = os.path.join(args.output_root, args.label + '_' + args.test_split + '.json')
     if not os.path.exists(args.output_root):
         os.makedirs(args.output_root)
+
+    # Set HF token if provided (for downloading gated models)
+    if args.hf_token:
+        import os as _os
+        _os.environ['HF_TOKEN'] = args.hf_token
+        _os.environ['HUGGING_FACE_HUB_TOKEN'] = args.hf_token
+        try:
+            from huggingface_hub import login
+            login(token=args.hf_token)
+            print("✓ Logged in to Hugging Face Hub")
+        except Exception as e:
+            print(f"Warning: Could not login to HF Hub: {e}")
 
     agent = MRetrievalAgent(args)
     correct = 0

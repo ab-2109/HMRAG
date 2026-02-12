@@ -1,4 +1,4 @@
-llm_model_name: "qwen2.5:7b"
+llm_model_name: "qwen2.5:1.5b"
 top_k: 1
 vector_search_mode: "naive"
 graph_search_mode: "mix"

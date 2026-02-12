@@ -12,7 +12,7 @@ class WebRetrieval(BaseRetrieval):
         serpapi_api_key = getattr(config, 'serpapi_api_key', '')
         self.top_k = getattr(config, 'top_k', 4)
         ollama_base_url = getattr(config, 'ollama_base_url', 'http://localhost:11434')
-        web_llm_model = getattr(config, 'web_llm_model_name', 'qwen2.5:7b')
+        web_llm_model = getattr(config, 'web_llm_model_name', 'qwen2.5:1.5b')
 
         self.client = SerpAPIWrapper(
             serpapi_api_key=serpapi_api_key

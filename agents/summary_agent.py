@@ -4,6 +4,7 @@ import re
 from transformers import AutoProcessor
 import random
 import os
+import torch
 
 from prompts.base_prompt import build_prompt
 
@@ -13,8 +14,10 @@ class SummaryAgent:
         self.config = config
         self.text_llm = OllamaLLM(
             base_url=getattr(config, 'ollama_base_url', 'http://localhost:11434'),
-            model=getattr(config, 'llm_model_name', 'qwen2.5:7b')
+            model=getattr(config, 'llm_model_name', 'qwen2.5:1.5b')
         )
+        # HF token for downloading gated models
+        self.hf_token = getattr(config, 'hf_token', '') or os.environ.get('HF_TOKEN', '')
         # Lazy-load the vision model only when needed
         self._vision_model = None
         self._processor = None
@@ -24,12 +27,22 @@ class SummaryAgent:
         if self._vision_model is None:
             try:
                 from transformers import Qwen2_5_VLForConditionalGeneration
-                from qwen_vl_utils import process_vision_info
+                
+                model_name = "Qwen/Qwen2.5-VL-2B-Instruct"
+                
+                # Use HF token if available
+                token_kwargs = {}
+                if self.hf_token:
+                    token_kwargs['token'] = self.hf_token
+                
                 self._processor = AutoProcessor.from_pretrained(
-                    "Qwen/Qwen2.5-VL-7B-Instruct", use_fast=True
+                    model_name, use_fast=True, **token_kwargs
                 )
                 self._vision_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                    "Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype="auto", device_map="auto"
+                    model_name,
+                    torch_dtype=torch.float16,
+                    device_map="auto",
+                    **token_kwargs
                 )
             except Exception as e:
                 print(f"Warning: Could not load vision model: {e}")
@@ -156,11 +169,14 @@ class SummaryAgent:
             padding=True,
             return_tensors="pt",
         )
-        inputs = inputs.to(self._vision_model.device)
+        
+        # Move inputs to the same device as the model
+        device = next(self._vision_model.parameters()).device
+        inputs = {k: v.to(device) if hasattr(v, 'to') else v for k, v in inputs.items()}
 
-        generated_ids = self._vision_model.generate(**inputs, max_new_tokens=2048)
+        generated_ids = self._vision_model.generate(**inputs, max_new_tokens=512)
         generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs['input_ids'], generated_ids)
         ]
         output_text = self._processor.batch_decode(
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
