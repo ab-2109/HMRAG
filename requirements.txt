@@ -40,4 +40,6 @@ opencv-python
 termcolor
 bitsandbytes
 nltk
-google-search-results
+nest_asyncio
+Pillow
+requests

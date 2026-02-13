@@ -1,14 +1,14 @@
 """
 Web-based Retrieval Agent (HM-RAG Layer 2, Section 3.3.3).
 
-Performs live web search via SerpAPI (Google Search) and then uses a
+Performs live web search via Serper API (Google Search) and then uses a
 local Ollama LLM to synthesise an answer from the retrieved snippets.
 
 This agent provides real-time, up-to-date knowledge that complements
 the static vector and graph retrieval agents.
 
 Pipeline:
-    1. query  →  SerpAPI (Google)  →  raw search results
+    1. query  →  Serper API (Google)  →  raw search results
     2. raw results  →  format_results()  →  readable snippets
     3. snippets + query  →  Ollama LLM  →  synthesised answer string
 """
@@ -16,12 +16,15 @@ Pipeline:
 import logging
 from typing import Any, Dict, List, Optional, Union
 
-from langchain_community.utilities import SerpAPIWrapper
+import requests
 from langchain_ollama import OllamaLLM
 
 from retrieval.base_retrieval import BaseRetrieval
 
 logger = logging.getLogger(__name__)
+
+# Serper API endpoint
+_SERPER_URL = "https://google.serper.dev/search"
 
 # Prompt template used to instruct the LLM to synthesise an answer
 # from web search results.  Keeps the model focused and prevents
@@ -39,21 +42,19 @@ _SYNTHESIS_PROMPT = (
 
 
 class WebRetrieval(BaseRetrieval):
-    """Live web search retrieval agent using SerpAPI + Ollama LLM.
+    """Live web search retrieval agent using Serper API + Ollama LLM.
 
     Attributes:
-        client: SerpAPIWrapper instance for Google search.
-        llm:    OllamaLLM instance for answer synthesis from snippets.
+        serper_api_key: API key for Serper (https://serper.dev).
+        llm:            OllamaLLM instance for answer synthesis from snippets.
     """
 
     def __init__(self, config: Any):
         super().__init__(config)
 
-        serpapi_api_key = getattr(config, 'serpapi_api_key', '')
+        self.serper_api_key: str = getattr(config, 'serper_api_key', '')
         ollama_base_url = getattr(config, 'ollama_base_url', 'http://localhost:11434')
         web_llm_model = getattr(config, 'web_llm_model_name', 'qwen2.5:1.5b')
-
-        self.client = SerpAPIWrapper(serpapi_api_key=serpapi_api_key)
 
         self.llm = OllamaLLM(
             base_url=ollama_base_url,
@@ -81,7 +82,7 @@ class WebRetrieval(BaseRetrieval):
             error message if the search or generation fails.
         """
         try:
-            raw_results = self.client.results(query)
+            raw_results = self._serper_search(query)
             formatted = self.format_results(raw_results)
             answer = self._generate(formatted, query)
             logger.debug(
@@ -94,24 +95,52 @@ class WebRetrieval(BaseRetrieval):
             return f"Web retrieval failed: {e}"
 
     # ------------------------------------------------------------------
+    # Serper API call
+    # ------------------------------------------------------------------
+
+    def _serper_search(self, query: str) -> Dict:
+        """Call the Serper API and return the JSON response.
+
+        Args:
+            query: The search query string.
+
+        Returns:
+            Parsed JSON dict from Serper API.
+
+        Raises:
+            RuntimeError: If the API key is missing or the request fails.
+        """
+        if not self.serper_api_key:
+            raise RuntimeError("Serper API key is not set")
+
+        headers = {
+            "X-API-KEY": self.serper_api_key,
+            "Content-Type": "application/json",
+        }
+        payload = {"q": query, "num": self.top_k}
+
+        resp = requests.post(_SERPER_URL, json=payload, headers=headers, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
     # Result formatting
     # ------------------------------------------------------------------
 
     def format_results(self, results: Union[Dict, str, Any]) -> str:
-        """Convert raw SerpAPI results into readable text snippets.
+        """Convert raw Serper API results into readable text snippets.
 
-        Handles three response shapes:
-            - ``dict`` with ``answerBox`` and/or ``organic`` keys
-            - plain ``str`` (SerpAPIWrapper sometimes returns this)
-            - anything else → ``str()`` fallback
+        Handles Serper's JSON response format with keys:
+            - ``answerBox``   — direct answer / featured snippet
+            - ``organic``     — list of organic search results
+            - ``knowledgeGraph`` — knowledge panel
 
         Args:
-            results: Raw output from ``SerpAPIWrapper.results()``.
+            results: Raw JSON output from the Serper API.
 
         Returns:
             A formatted string of search snippets.
         """
-        # SerpAPIWrapper sometimes returns a plain string directly
         if isinstance(results, str):
             return results if results.strip() else "No relevant results found."
 
@@ -126,7 +155,7 @@ class WebRetrieval(BaseRetrieval):
             answer_text = (
                 answer_box.get('answer')
                 or answer_box.get('snippet')
-                or answer_box.get('snippetHighlighted', [''])[0]
+                or answer_box.get('snippetHighlighted', '')
             )
             if answer_text:
                 snippets.append(

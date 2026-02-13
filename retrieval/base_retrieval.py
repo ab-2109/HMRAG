@@ -7,7 +7,7 @@ so the orchestrator (:class:`MRetrievalAgent`) can treat them uniformly.
 Section 3.3 of the paper describes three parallel retrieval agents:
     - VectorRetrieval  — LightRAG naive mode  (unstructured similarity search)
     - GraphRetrieval   — LightRAG hybrid mode (knowledge-graph traversal)
-    - WebRetrieval     — SerpAPI + LLM answer generation (live web search)
+    - WebRetrieval     — Serper API + LLM answer generation (live web search)
 """
 
 import logging

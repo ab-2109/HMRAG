@@ -13,7 +13,7 @@ Upload `colab_setup.ipynb` to Google Colab and run the cells sequentially.
 
 1. **Google Colab Account** with GPU runtime (recommended)
 2. **API Keys**:
-   - SerpAPI Key (for web search, get from https://serpapi.com/) - **Required**
+   - Serper API Key (for web search, get from https://serper.dev/) - **Required**
    - OpenAI API Key (optional - system uses Ollama by default)
 
 ## Step-by-Step Setup
@@ -32,13 +32,13 @@ Upload `colab_setup.ipynb` to Google Colab and run the cells sequentially.
 ### 3. Setup API Keys
 
 Store your API keys in Colab Secrets (left sidebar → 🔑 Secrets):
-- `SERPAPI_API_KEY` (Required)
+- `SERPER_API_KEY` (Required)
 - `OPENAI_API_KEY` (Optional - not used, kept for compatibility)
 
 Then access them:
 ```python
 from google.colab import userdata
-SERPAPI_API_KEY = userdata.get('SERPAPI_API_KEY')
+SERPER_API_KEY = userdata.get('SERPER_API_KEY')
 # OPENAI_API_KEY = userdata.get('OPENAI_API_KEY')  # Optional
 ```
 
@@ -62,7 +62,7 @@ SERPAPI_API_KEY = userdata.get('SERPAPI_API_KEY')
     --output_root ./outputs \
     --caption_file ./dataset/ScienceQA/captions.json \
     --working_dir ./lightrag_workdir \
-    --serpapi_api_key "${SERPAPI_API_KEY}" \
+    --serper_api_key "${SERPER_API_KEY}" \
     --test_split test \
     --test_number 5 \
     --shot_number 0 \
@@ -80,7 +80,7 @@ SERPAPI_API_KEY = userdata.get('SERPAPI_API_KEY')
     --output_root ./outputs \
     --caption_file ./dataset/ScienceQA/captions.json \
     --working_dir ./lightrag_workdir \
-    --serpapi_api_key "${SERPAPI_API_KEY}" \
+    --serper_api_key "${SERPER_API_KEY}" \
     --test_split test \
     --shot_number 2 \
     --label full_run \
@@ -148,10 +148,10 @@ drive.mount('/content/drive')
 | `--output_root` | 'outputs' | Where to save results |
 | `--caption_file` | '' | Path to captions.json |
 | `--working_dir` | './lightrag_workdir' | LightRAG working directory |
-| `--llm_model_name` | 'qwen2.5:7b' | Ollama model name |
-| `--web_llm_model_name` | 'qwen2.5:7b' | Model for web retrieval |
+| `--llm_model_name` | 'qwen2.5:1.5b' | Ollama model name |
+| `--web_llm_model_name` | 'qwen2.5:1.5b' | Model for web retrieval |
 | `--mode` | 'hybrid' | Retrieval mode: naive/hybrid/mix |
-| `--serpapi_api_key` | '' | SerpAPI key for web search |
+| `--serper_api_key` | '' | Serper API key for web search |
 | `--ollama_base_url` | 'http://localhost:11434' | Ollama server URL |
 | `--test_split` | 'test' | Dataset split: test/val/minival |
 | `--test_number` | -1 | Number of examples (-1 = all) |
@@ -190,7 +190,7 @@ Check if `dataset/download_ScienceQA.sh` exists and is executable:
 The code tries to connect to `localhost:11434` for Ollama. On Colab:
 1. Install Ollama (see notebook instructions)
 2. Start Ollama service in background
-3. Pull required models: `qwen2.5:7b`, `nomic-embed-text`
+3. Pull required models: `qwen2.5:1.5b`, `nomic-embed-text`
 
 ## Expected Output
 
@@ -219,9 +219,9 @@ Number of failed questions: 2
 
 ## Getting API Keys
 
-### SerpAPI Key
-1. Go to https://serpapi.com/
-2. Sign up (free tier: 100 searches/month)
+### Serper API Key
+1. Go to https://serper.dev/
+2. Sign up (free tier: 2,500 searches)
 3. Get your API key from dashboard
 4. Copy and save it securely
 

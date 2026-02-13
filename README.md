@@ -1,4 +1,8 @@
-<h1 align="center">HM-RAG: Hierarchical Multi-Agent Multimodal Retrieval Augmented Generation</h1>
+<h1 align="center">HM-RAG: Hierarchical Multi-Agent Mul```bash
+python main.py --working_dir <path> --serper_api_key <key>
+```
+
+Note: OpenAI API key is not required. The system uses Ollama for LLM inference. LightRAG also uses the local Ollama qwen model (not GPT-4o-mini).al Retrieval Augmented Generation</h1>
 
 <p align="center">
     <a href="https://arxiv.org/abs/2504.12330">
@@ -54,7 +58,7 @@ We utilize LightRAG, a lightweight framework to construct MMKGs. For comprehensi
 
 ### Multi-Agent Inference
 ```bash
-python main.py --working_dir <path> --serpapi_api_key <key>
+python main.py --working_dir <path> --serper_api_key <key>
 ```
 
 Note: OpenAI API key is not required. The system uses Ollama for LLM inference.

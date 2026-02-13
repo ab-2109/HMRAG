@@ -8,7 +8,7 @@ Usage:
         --data_root ./dataset/ScienceQA/data/scienceqa \\
         --image_root ./dataset/ScienceQA/data/scienceqa \\
         --llm_model_name qwen2.5:1.5b \\
-        --serpapi_api_key YOUR_KEY \\
+        --serper_api_key YOUR_KEY \\
         --test_number 100
 """
 
@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Tuple
 from tqdm import tqdm
 
 from agents.multi_retrieval_agents import MRetrievalAgent
+from preprocessing.build_knowledge_base import KnowledgeBaseBuilder
 
 logging.basicConfig(
     level=logging.INFO,
@@ -99,8 +100,8 @@ def parse_args() -> argparse.Namespace:
                         help='LightRAG retrieval mode')
     parser.add_argument('--top_k', type=int, default=4,
                         help='Number of retrieval results per agent')
-    parser.add_argument('--serpapi_api_key', type=str, default='',
-                        help='API key for SerpAPI web search')
+    parser.add_argument('--serper_api_key', type=str, default='',
+                        help='API key for Serper web search (https://serper.dev)')
     parser.add_argument('--ollama_base_url', type=str,
                         default='http://localhost:11434',
                         help='Base URL for Ollama server')
@@ -172,6 +173,19 @@ def _select_shot_qids(
     return []
 
 
+def _get_train_qids(args: argparse.Namespace) -> List[str]:
+    """Load training-split QIDs for knowledge-base construction.
+
+    These are the problems whose textual content (hint, lecture,
+    solution, image captions) gets indexed into LightRAG during
+    the Phase 1 preprocessing step.
+    """
+    splits_path = os.path.join(args.data_root, 'pid_splits.json')
+    with open(splits_path, 'r') as f:
+        pid_splits = json.load(f)
+    return pid_splits.get('train', [])
+
+
 # ======================================================================
 # HuggingFace token setup
 # ======================================================================
@@ -236,6 +250,14 @@ def main() -> None:
         args.output_root,
         f"{args.label}_{args.test_split}.json",
     )
+
+    # ── Phase 1: Build Knowledge Base (Section 3.1) ──────────────────
+    # Index training-split problems into LightRAG so vector/graph
+    # retrieval agents have a populated database to query.
+    # Uses the same working_dir that the retrieval agents will read from.
+    train_qids = _get_train_qids(args)
+    builder = KnowledgeBaseBuilder(args)
+    builder.build(problems, train_qids)
 
     # ── Initialise agent ─────────────────────────────────────────────
     agent = MRetrievalAgent(args)

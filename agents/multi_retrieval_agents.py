@@ -130,7 +130,7 @@ class MRetrievalAgent:
 
         Per the paper (Section 3.3.3) the three retrieval agents run in
         parallel.  We use a ThreadPoolExecutor because all three agents
-        are I/O-bound (HTTP calls to Ollama / SerpAPI / disk reads).
+        are I/O-bound (HTTP calls to Ollama / Serper / disk reads).
 
         Args:
             sub_queries: List of sub-query strings from Layer 1.

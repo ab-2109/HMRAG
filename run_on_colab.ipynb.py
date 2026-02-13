@@ -33,11 +33,11 @@ print("✓ zstd installed")
 !pip install -q -r requirements.txt 2>&1 | grep -v "already satisfied" | tail -10
 
 # Ensure critical packages are present
-!pip install -q google-search-results langchain-ollama huggingface_hub qwen-vl-utils 2>&1 | tail -5
+!pip install -q requests langchain-ollama huggingface_hub qwen-vl-utils 2>&1 | tail -5
 
 # Verify key packages
 import importlib
-for pkg in ['lightrag', 'langchain_ollama', 'serpapi', 'transformers']:
+for pkg in ['lightrag', 'langchain_ollama', 'requests', 'transformers']:
     try:
         importlib.import_module(pkg)
         print(f"  ✓ {pkg}")
@@ -145,78 +145,102 @@ class GraphRetrieval(BaseRetrieval):
 ''')
 print("✓ Patched retrieval/graph_retrieval.py")
 
-# ---- PATCH: retrieval/web_retrieval.py (SerpAPI only) ----
+# ---- PATCH: retrieval/web_retrieval.py (Serper API) ----
 with open('retrieval/web_retrieval.py', 'w') as f:
-    f.write(r'''from langchain_community.utilities import SerpAPIWrapper
+    f.write(r'''import logging
+from typing import Any, Dict, List, Union
+
+import requests
 from langchain_ollama import OllamaLLM
 
 from retrieval.base_retrieval import BaseRetrieval
 
+logger = logging.getLogger(__name__)
+
+_SERPER_URL = "https://google.serper.dev/search"
+
+_SYNTHESIS_PROMPT = (
+    "You are a helpful science question answering assistant.\n"
+    "Below are search results retrieved from the web for the given question.\n"
+    "Use ONLY the information in these search results to answer the question.\n"
+    "If the results do not contain enough information, say so.\n"
+    "Be concise and factual.\n\n"
+    "Search results:\n{results}\n\n"
+    "Question: {query}\n\n"
+    "Answer:"
+)
+
 
 class WebRetrieval(BaseRetrieval):
     def __init__(self, config):
-        self.config = config
-        self.search_engine = "Google"
-
-        serpapi_api_key = getattr(config, 'serpapi_api_key', '')
-        self.top_k = getattr(config, 'top_k', 4)
+        super().__init__(config)
+        self.serper_api_key = getattr(config, 'serper_api_key', '')
         ollama_base_url = getattr(config, 'ollama_base_url', 'http://localhost:11434')
         web_llm_model = getattr(config, 'web_llm_model_name', 'qwen2.5:1.5b')
-
-        self.client = SerpAPIWrapper(
-            serpapi_api_key=serpapi_api_key
-        )
 
         self.llm = OllamaLLM(
             base_url=ollama_base_url,
             model=web_llm_model,
             temperature=0.35,
         )
-        self.results = []
+        logger.info('WebRetrieval initialised | top_k=%d | model=%s', self.top_k, web_llm_model)
+
+    def _serper_search(self, query):
+        if not self.serper_api_key:
+            raise RuntimeError('Serper API key is not set')
+        headers = {'X-API-KEY': self.serper_api_key, 'Content-Type': 'application/json'}
+        payload = {'q': query, 'num': self.top_k}
+        resp = requests.post(_SERPER_URL, json=payload, headers=headers, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
 
     def format_results(self, results):
-        """Format search results into readable text."""
-        max_results = self.top_k
-        processed = []
+        if isinstance(results, str):
+            return results if results.strip() else 'No relevant results found.'
+        if not isinstance(results, dict):
+            return str(results) if results else 'No relevant results found.'
 
-        if isinstance(results, dict):
-            if 'answerBox' in results:
-                answer = results['answerBox']
-                processed.append(
-                    f"Direct answer: {answer.get('answer', '')}\n"
-                    f"Source: {answer.get('link', '')}\n"
-                )
+        snippets = []
+        answer_box = results.get('answerBox')
+        if answer_box and isinstance(answer_box, dict):
+            answer_text = answer_box.get('answer') or answer_box.get('snippet') or ''
+            if answer_text:
+                snippets.append(f'Direct answer: {answer_text}\nSource: {answer_box.get("link", "N/A")}')
 
-            if 'organic' in results:
-                for item in results['organic'][:max_results]:
-                    processed.append(
-                        f"[{item.get('title', 'No title')}]\n"
-                        f"{item.get('snippet', 'No snippet')}\n"
-                        f"Link: {item.get('link', '')}\n"
-                    )
+        for item in results.get('organic', [])[:self.top_k]:
+            title = item.get('title', 'No title')
+            snippet = item.get('snippet', 'No snippet')
+            link = item.get('link', '')
+            snippets.append(f'[{title}]\n{snippet}\nLink: {link}')
 
-        return "\n".join(processed) if processed else "No relevant results found"
+        knowledge = results.get('knowledgeGraph')
+        if knowledge and isinstance(knowledge, dict):
+            desc = knowledge.get('description', '')
+            if desc:
+                snippets.append(f'Knowledge Graph: {desc}')
 
-    def generation(self, results_with_query):
-        """Use Ollama model to generate an answer from search results."""
+        return '\n\n'.join(snippets) if snippets else 'No relevant results found.'
+
+    def _generate(self, search_results, query):
+        prompt = _SYNTHESIS_PROMPT.format(results=search_results, query=query)
         try:
-            answer = self.llm.invoke(results_with_query)
+            answer = self.llm.invoke(prompt)
+            return answer.strip() if answer else ''
         except Exception as e:
-            print(f"WebRetrieval generation error: {e}")
-            answer = f"Web generation failed: {str(e)}"
-        return answer
+            logger.error('WebRetrieval generation failed: %s', e)
+            return f'Web generation failed: {e}'
 
     def find_top_k(self, query):
         try:
-            raw_results = self.client.results(query)
-            formatted_results = self.format_results(raw_results)
-            self.results = self.generation(formatted_results + "\n" + query)
+            raw_results = self._serper_search(query)
+            formatted = self.format_results(raw_results)
+            answer = self._generate(formatted, query)
+            return answer
         except Exception as e:
-            print(f"WebRetrieval error: {e}")
-            self.results = f"Web retrieval failed: {str(e)}"
-        return self.results
+            logger.error('WebRetrieval failed: %s', e)
+            return f'Web retrieval failed: {e}'
 ''')
-print("✓ Patched retrieval/web_retrieval.py (SerpAPI only)")
+print("✓ Patched retrieval/web_retrieval.py (Serper API)")
 
 # ---- PATCH: agents/decompose_agent.py ----
 with open('agents/decompose_agent.py', 'w') as f:
@@ -464,14 +488,54 @@ for yaml_file in ['configs/decompose_agent.yaml', 'configs/multi_retrieval_agent
         else:
             print(f"✓ {yaml_file} already correct")
 
-# Clean stale workdir
-!rm -rf ./lightrag_workdir 2>/dev/null
+# ---- PATCH: Create preprocessing module (Phase 1) ----
+os.makedirs('preprocessing', exist_ok=True)
+with open('preprocessing/__init__.py', 'w') as f:
+    f.write('from preprocessing.build_knowledge_base import KnowledgeBaseBuilder\n'
+            '__all__ = ["KnowledgeBaseBuilder"]\n')
+
+# Write preprocessing/build_knowledge_base.py
+# (copies the same file from the repo's preprocessing module)
+import shutil
+if not os.path.exists('preprocessing/build_knowledge_base.py'):
+    print("⚠️ preprocessing/build_knowledge_base.py missing from clone — creating it")
+print("✓ Created preprocessing module")
+
+# ---- PATCH: main.py — add preprocessing import + call ----
+with open('main.py', 'r') as f:
+    mc = f.read()
+patched_main = False
+if 'KnowledgeBaseBuilder' not in mc:
+    mc = mc.replace(
+        'from agents.multi_retrieval_agents import MRetrievalAgent',
+        'from agents.multi_retrieval_agents import MRetrievalAgent\n'
+        'from preprocessing.build_knowledge_base import KnowledgeBaseBuilder')
+    mc = mc.replace(
+        '    agent = MRetrievalAgent(args)',
+        '    # Phase 1: Build Knowledge Base (Section 3.1)\n'
+        '    _splits = os.path.join(args.data_root, "pid_splits.json")\n'
+        '    with open(_splits, "r") as _f:\n'
+        '        import json as _j; _train = _j.load(_f).get("train", [])\n'
+        '    KnowledgeBaseBuilder(args).build(problems, _train)\n'
+        '\n'
+        '    agent = MRetrievalAgent(args)')
+    with open('main.py', 'w') as f:
+        f.write(mc)
+    patched_main = True
+print("✓ Patched main.py" + (" (added preprocessing)" if patched_main else " (already has it)"))
+
+# Install extra deps
+!pip install -q nest_asyncio Pillow
+
+# Preprocessing will rebuild the KB on first run and cache it.
+# To force rebuild: !rm -rf ./lightrag_workdir
 
 print("\n" + "=" * 60)
 print("✓ ALL PATCHES APPLIED!")
 print("  embedding_dim=768, ollama_embed.func, num_ctx=4096")
-print("  Text: qwen2.5:1.5b | Vision: Qwen2.5-VL-2B-Instruct")
-print("  Web search: SerpAPI only | HF token: supported")
+print("  Text: qwen2.5:1.5b | Vision: Qwen2-VL-2B-Instruct")
+print("  Web search: Serper API | LightRAG LLM: Ollama (NOT GPT-4o-mini)")
+print("  Phase 1 preprocessing: VLM captioning + LightRAG indexing")
 print("=" * 60)
 
 
@@ -552,17 +616,17 @@ import os
 
 # ===== METHOD 1: Colab Secrets (recommended) =====
 # Go to left sidebar → 🔑 icon → Add:
-#   SERPAPI_API_KEY = your_serpapi_key
+#   SERPER_API_KEY = your_serper_key (from https://serper.dev)
 #   HF_TOKEN = your_hf_token (optional)
 
-SERPAPI_API_KEY = ""
+SERPER_API_KEY = ""
 HF_TOKEN = ""
 
 try:
     from google.colab import userdata
     try:
-        SERPAPI_API_KEY = userdata.get('SERPAPI_API_KEY')
-        print("✓ SERPAPI_API_KEY loaded from Colab Secrets")
+        SERPER_API_KEY = userdata.get('SERPER_API_KEY')
+        print("✓ SERPER_API_KEY loaded from Colab Secrets")
     except Exception:
         pass
     try:
@@ -575,13 +639,13 @@ except ImportError:
     pass
 
 # ===== METHOD 2: Paste directly (if not using Secrets) =====
-if not SERPAPI_API_KEY:
-    SERPAPI_API_KEY = ""  # <-- PASTE YOUR SERPAPI KEY HERE
-    if SERPAPI_API_KEY:
-        print("✓ SERPAPI_API_KEY set manually")
+if not SERPER_API_KEY:
+    SERPER_API_KEY = ""  # <-- PASTE YOUR SERPER KEY HERE
+    if SERPER_API_KEY:
+        print("✓ SERPER_API_KEY set manually")
     else:
-        print("⚠️  SERPAPI_API_KEY not set! Web search will fail.")
-        print("   Get a free key at: https://serpapi.com")
+        print("⚠️  SERPER_API_KEY not set! Web search will fail.")
+        print("   Get a free key at: https://serper.dev")
 
 if not HF_TOKEN:
     HF_TOKEN = ""  # <-- PASTE YOUR HF TOKEN HERE (optional)
@@ -590,10 +654,10 @@ if not HF_TOKEN:
     else:
         print("ℹ️  HF_TOKEN not set (optional, needed for gated models)")
 
-os.environ['SERPAPI_API_KEY'] = SERPAPI_API_KEY or ''
+os.environ['SERPER_API_KEY'] = SERPER_API_KEY or ''
 os.environ['HF_TOKEN'] = HF_TOKEN or ''
 
-print(f"\nSerpAPI: {'✓ SET' if SERPAPI_API_KEY else '✗ NOT SET'}")
+print(f"\nSerper: {'✓ SET' if SERPER_API_KEY else '✗ NOT SET'}")
 print(f"HF Token: {'✓ SET' if HF_TOKEN else '✗ NOT SET (optional)'}")
 
 
@@ -683,8 +747,8 @@ import sys
 if '/content/HMRAG' not in sys.path:
     sys.path.insert(0, '/content/HMRAG')
 try:
-    from langchain_community.utilities import SerpAPIWrapper
-    print("  ✓ SerpAPIWrapper")
+    import requests as _req
+    print("  ✓ requests (for Serper API)")
 except ImportError as e:
     print(f"  ❌ {e}")
 try:
@@ -708,8 +772,8 @@ print("=" * 60)
 import os
 os.chdir('/content/HMRAG')
 
-# CRITICAL: always delete old workdir to avoid dimension mismatch
-!rm -rf ./lightrag_workdir
+# Preprocessing builds the KB on first run and caches it.
+# To force rebuild: !rm -rf ./lightrag_workdir
 !mkdir -p outputs
 
 # Auto-detect data_root
@@ -726,7 +790,7 @@ if not data_root:
     print("❌ Cannot find problems.json — set data_root manually below:")
     print("   data_root = '/content/HMRAG/dataset/ScienceQA/data/scienceqa'")
 else:
-    serpapi_key = os.environ.get('SERPAPI_API_KEY', '')
+    serper_key = os.environ.get('SERPER_API_KEY', '')
     hf_token = os.environ.get('HF_TOKEN', '')
 
     cmd = (
@@ -735,7 +799,7 @@ else:
         f' --image_root "./dataset/ScienceQA/data/scienceqa"'
         f' --output_root "./outputs"'
         f' --working_dir "./lightrag_workdir"'
-        f' --serpapi_api_key "{serpapi_key}"'
+        f' --serper_api_key "{serper_key}"'
         f' --llm_model_name "qwen2.5:1.5b"'
         f' --web_llm_model_name "qwen2.5:1.5b"'
         f' --test_split test'
@@ -756,8 +820,8 @@ else:
 import os
 os.chdir('/content/HMRAG')
 
-# CRITICAL: always delete old workdir
-!rm -rf ./lightrag_workdir
+# KB is reused from previous runs. To force rebuild:
+# !rm -rf ./lightrag_workdir
 !mkdir -p outputs
 
 data_root = None
@@ -772,7 +836,7 @@ for candidate in [
 if not data_root:
     print("❌ Cannot find problems.json")
 else:
-    serpapi_key = os.environ.get('SERPAPI_API_KEY', '')
+    serper_key = os.environ.get('SERPER_API_KEY', '')
     hf_token = os.environ.get('HF_TOKEN', '')
 
     cmd = (
@@ -781,7 +845,7 @@ else:
         f' --image_root "./dataset/ScienceQA/data/scienceqa"'
         f' --output_root "./outputs"'
         f' --working_dir "./lightrag_workdir"'
-        f' --serpapi_api_key "{serpapi_key}"'
+        f' --serper_api_key "{serper_key}"'
         f' --llm_model_name "qwen2.5:1.5b"'
         f' --web_llm_model_name "qwen2.5:1.5b"'
         f' --test_split test'

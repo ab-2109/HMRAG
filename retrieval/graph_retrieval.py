@@ -5,6 +5,9 @@ Uses LightRAG in *hybrid/mix* mode to traverse a knowledge graph built
 from ingested documents.  The graph captures entity–relation triples and
 enables multi-hop reasoning that pure vector similarity cannot achieve.
 
+The knowledge base must be populated first by the preprocessing step
+(``preprocessing.build_knowledge_base.KnowledgeBaseBuilder``).
+
 Query modes supported by LightRAG:
     naive   — flat vector similarity (used by VectorRetrieval)
     local   — single-hop graph neighbours
@@ -25,8 +28,7 @@ from retrieval.base_retrieval import BaseRetrieval
 
 logger = logging.getLogger(__name__)
 
-# Seed document inserted into an empty LightRAG database so that the
-# internal async storage context manager is properly initialised.
+# Fallback seed document — only used if preprocessing was skipped.
 _SEED_DOCUMENT = (
     "Science is the systematic study of the natural world through observation "
     "and experimentation. Key branches include physics, chemistry, biology, "
@@ -37,6 +39,9 @@ _SEED_DOCUMENT = (
 
 class GraphRetrieval(BaseRetrieval):
     """Knowledge-graph retrieval agent using LightRAG hybrid/mix mode.
+
+    Connects to the *same* ``working_dir`` that was populated during
+    Phase 1 preprocessing.
 
     Attributes:
         mode:   LightRAG query mode (default ``"mix"``).
@@ -74,30 +79,26 @@ class GraphRetrieval(BaseRetrieval):
         )
 
         logger.info(
-            "GraphRetrieval initialised | mode=%s | top_k=%d | model=%s",
-            self.mode, self.top_k, model_name,
+            "GraphRetrieval initialised | mode=%s | top_k=%d | model=%s | dir=%s",
+            self.mode, self.top_k, model_name, working_dir,
         )
 
     def _ensure_initialised(self) -> None:
-        """Insert a seed document if the database is empty.
+        """Insert a seed document only if the DB is completely empty.
 
-        LightRAG's internal async storage raises a NoneType error when
-        queried on a completely empty database.  Inserting one small
-        document forces the storage backend to initialise properly.
+        This is a fallback for when preprocessing was skipped.
+        Normally the knowledge base is already populated by Phase 1.
         """
         if self._initialised:
             return
         try:
+            import nest_asyncio
+            nest_asyncio.apply()
             loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import nest_asyncio
-                nest_asyncio.apply()
-            asyncio.get_event_loop().run_until_complete(
-                self.client.ainsert(_SEED_DOCUMENT)
-            )
-            logger.info("GraphRetrieval: seed document inserted")
+            loop.run_until_complete(self.client.ainsert(_SEED_DOCUMENT))
+            logger.info("GraphRetrieval: seed document inserted (fallback)")
         except Exception as e:
-            logger.warning("GraphRetrieval: seed insert failed (may already exist): %s", e)
+            logger.debug("GraphRetrieval: seed insert skipped: %s", e)
         self._initialised = True
 
     def find_top_k(self, query: str) -> str:

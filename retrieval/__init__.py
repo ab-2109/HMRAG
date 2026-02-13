@@ -4,7 +4,7 @@ HM-RAG retrieval layer (Layer 2).
 Provides the three parallel retrieval agents:
     - :class:`VectorRetrieval` — LightRAG naive mode (vector similarity)
     - :class:`GraphRetrieval`  — LightRAG hybrid mode (knowledge graph)
-    - :class:`WebRetrieval`    — SerpAPI + Ollama LLM (live web search)
+    - :class:`WebRetrieval`    — Serper API + Ollama LLM (live web search)
 
 All inherit from :class:`BaseRetrieval`.
 """

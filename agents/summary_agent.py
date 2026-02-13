@@ -21,33 +21,42 @@ class SummaryAgent:
         # Lazy-load the vision model only when needed
         self._vision_model = None
         self._processor = None
+        self._vision_load_attempted = False  # ensure we only try loading once
 
     def _load_vision_model(self):
-        """Lazy-load Qwen VL model only when image reasoning is needed."""
-        if self._vision_model is None:
-            try:
-                from transformers import Qwen2_5_VLForConditionalGeneration
-                
-                model_name = "Qwen/Qwen2.5-VL-2B-Instruct"
-                
-                # Use HF token if available
-                token_kwargs = {}
-                if self.hf_token:
-                    token_kwargs['token'] = self.hf_token
-                
-                self._processor = AutoProcessor.from_pretrained(
-                    model_name, use_fast=True, **token_kwargs
-                )
-                self._vision_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float16,
-                    device_map="auto",
-                    **token_kwargs
-                )
-            except Exception as e:
-                print(f"Warning: Could not load vision model: {e}")
-                self._vision_model = None
-                self._processor = None
+        """Lazy-load Qwen VL model only when image reasoning is needed.
+        
+        Only attempts loading once.  If the first attempt fails the model
+        stays ``None`` and all subsequent calls fall back to text-only.
+        """
+        if self._vision_load_attempted:
+            return
+        self._vision_load_attempted = True
+
+        try:
+            from transformers import Qwen2VLForConditionalGeneration
+            
+            model_name = "Qwen/Qwen2-VL-2B-Instruct"
+            
+            # Use HF token if available
+            token_kwargs = {}
+            if self.hf_token:
+                token_kwargs['token'] = self.hf_token
+            
+            self._processor = AutoProcessor.from_pretrained(
+                model_name, use_fast=True, **token_kwargs
+            )
+            self._vision_model = Qwen2VLForConditionalGeneration.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto" if torch.cuda.is_available() else None,
+                **token_kwargs
+            )
+            print(f"✓ Vision model {model_name} loaded successfully")
+        except Exception as e:
+            print(f"Warning: Could not load vision model: {e}")
+            self._vision_model = None
+            self._processor = None
 
     def summarize(self, problems, shot_qids, qid, cur_ans) -> str:
         problem = problems[qid]
@@ -144,6 +153,12 @@ class SummaryAgent:
         except ImportError:
             print("Warning: qwen_vl_utils not installed, falling back to text-only.")
             return None
+
+        # Ensure file:// prefix for local images
+        if os.path.isfile(image_path) and not image_path.startswith(("http://", "https://", "file://")):
+            image_uri = f"file://{os.path.abspath(image_path)}"
+        else:
+            image_uri = image_path
         
         messages = [
             {
@@ -151,7 +166,7 @@ class SummaryAgent:
                 "content": [
                     {
                         "type": "image",
-                        "image": image_path,
+                        "image": image_uri,
                     },
                     {"type": "text", "text": prompt},
                 ],
