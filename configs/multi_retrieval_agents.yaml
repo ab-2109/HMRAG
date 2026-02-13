@@ -3,3 +3,4 @@ top_k: 1
 vector_search_mode: "naive"
 graph_search_mode: "mix"
 serpapi_api_key: ""
+max_response_length: 4096

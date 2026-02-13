@@ -1,15 +1,56 @@
+"""
+Graph-based Retrieval Agent (HM-RAG Layer 2, Section 3.3.2).
+
+Uses LightRAG in *hybrid/mix* mode to traverse a knowledge graph built
+from ingested documents.  The graph captures entity–relation triples and
+enables multi-hop reasoning that pure vector similarity cannot achieve.
+
+Query modes supported by LightRAG:
+    naive   — flat vector similarity (used by VectorRetrieval)
+    local   — single-hop graph neighbours
+    global  — community-level summaries
+    hybrid  — combines local + global
+    mix     — combines naive + local + global  (default here)
+"""
+
+import asyncio
+import logging
+from typing import Any
+
 from lightrag import LightRAG, QueryParam
 from lightrag.llm.ollama import ollama_model_complete, ollama_embed
 from lightrag.utils import EmbeddingFunc
 
 from retrieval.base_retrieval import BaseRetrieval
 
+logger = logging.getLogger(__name__)
+
+# Seed document inserted into an empty LightRAG database so that the
+# internal async storage context manager is properly initialised.
+_SEED_DOCUMENT = (
+    "Science is the systematic study of the natural world through observation "
+    "and experimentation. Key branches include physics, chemistry, biology, "
+    "earth science, and astronomy. The scientific method involves forming "
+    "hypotheses, conducting experiments, collecting data, and drawing conclusions."
+)
+
 
 class GraphRetrieval(BaseRetrieval):
-    def __init__(self, config):
-        self.config = config
-        self.mode = getattr(config, 'mode', 'mix')
-        self.top_k = getattr(config, 'top_k', 4)
+    """Knowledge-graph retrieval agent using LightRAG hybrid/mix mode.
+
+    Attributes:
+        mode:   LightRAG query mode (default ``"mix"``).
+        client: The LightRAG instance configured with Ollama LLM and
+                nomic-embed-text embeddings (768-dim).
+    """
+
+    def __init__(self, config: Any):
+        super().__init__(config)
+
+        self.mode: str = getattr(config, 'graph_search_mode',
+                                 getattr(config, 'mode', 'mix'))
+        self._initialised = False
+
         ollama_host = getattr(config, 'ollama_base_url', 'http://localhost:11434')
         model_name = getattr(config, 'llm_model_name', 'qwen2.5:1.5b')
         working_dir = getattr(config, 'working_dir', './lightrag_workdir')
@@ -19,8 +60,10 @@ class GraphRetrieval(BaseRetrieval):
             llm_model_func=ollama_model_complete,
             llm_model_name=model_name,
             llm_model_max_async=4,
-            # llm_model_max_token_size=65536,
-            llm_model_kwargs={"host": ollama_host, "options": {"num_ctx": 4096}},
+            llm_model_kwargs={
+                "host": ollama_host,
+                "options": {"num_ctx": 4096},
+            },
             embedding_func=EmbeddingFunc(
                 embedding_dim=768,
                 max_token_size=8192,
@@ -29,23 +72,56 @@ class GraphRetrieval(BaseRetrieval):
                 ),
             ),
         )
-        self.results = []
 
-    def find_top_k(self, query):
+        logger.info(
+            "GraphRetrieval initialised | mode=%s | top_k=%d | model=%s",
+            self.mode, self.top_k, model_name,
+        )
+
+    def _ensure_initialised(self) -> None:
+        """Insert a seed document if the database is empty.
+
+        LightRAG's internal async storage raises a NoneType error when
+        queried on a completely empty database.  Inserting one small
+        document forces the storage backend to initialise properly.
         """
-        Query the graph-based knowledge using the 'mix' mode.
-        Args:
-            query (str): The search query.
-        Returns:
-            str: The retrieval results.
-        """
+        if self._initialised:
+            return
         try:
-            self.results = self.client.query(
-                query,
-                param=QueryParam(mode=self.mode, top_k=self.top_k)
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import nest_asyncio
+                nest_asyncio.apply()
+            asyncio.get_event_loop().run_until_complete(
+                self.client.ainsert(_SEED_DOCUMENT)
             )
+            logger.info("GraphRetrieval: seed document inserted")
         except Exception as e:
-            print(f"GraphRetrieval error: {e}")
-            self.results = f"Graph retrieval failed: {str(e)}"
-        return self.results
+            logger.warning("GraphRetrieval: seed insert failed (may already exist): %s", e)
+        self._initialised = True
+
+    def find_top_k(self, query: str) -> str:
+        """Query the knowledge graph via LightRAG.
+
+        Args:
+            query: The search query (original question or sub-query).
+
+        Returns:
+            The retrieval results as a string, or an error message
+            if the query fails.
+        """
+        self._ensure_initialised()
+        try:
+            result = self.client.query(
+                query,
+                param=QueryParam(mode=self.mode, top_k=self.top_k),
+            )
+            logger.debug(
+                "GraphRetrieval | mode=%s | query='%s' | result_len=%d",
+                self.mode, query[:60], len(str(result)),
+            )
+            return str(result) if result else ""
+        except Exception as e:
+            logger.error("GraphRetrieval failed for '%s': %s", query[:60], e)
+            return f"Graph retrieval failed: {e}"
     
