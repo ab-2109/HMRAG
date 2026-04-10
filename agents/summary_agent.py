@@ -27,7 +27,10 @@ class SummaryAgent:
         """Lazy-load SmolVLM model only when image reasoning is needed."""
         if self._vision_model is None:
             try:
-                from transformers import AutoModelForVision2Seq
+                try:
+                    from transformers import AutoModelForVision2Seq as _AutoVisionModel
+                except Exception:
+                    from transformers import AutoModelForImageTextToText as _AutoVisionModel
 
                 model_name = getattr(
                     self.config,
@@ -36,9 +39,9 @@ class SummaryAgent:
                 )
                 self._processor = AutoProcessor.from_pretrained(
                     model_name,
-                    use_fast=True,
+                    backend="pil",
                 )
-                self._vision_model = AutoModelForVision2Seq.from_pretrained(
+                self._vision_model = _AutoVisionModel.from_pretrained(
                     model_name,
                     torch_dtype="auto",
                     device_map="auto",
