@@ -32,6 +32,21 @@ def _require_config_value(config, attr_name: str, env_name: str = "") -> str:
     )
 
 
+def _normalize_openai_base_url(value: str) -> str:
+    """Return a valid OpenAI-compatible base URL or empty string.
+
+    LightRAG/OpenAI client raises UnsupportedProtocol when base_url is an empty
+    string or protocol-less host. We only forward base_url when it is valid.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw.rstrip("/")
+    # Treat protocol-less values as invalid to avoid hard-to-debug runtime errors.
+    return ""
+
+
 def _build_openai_embedding_func(openai_embed, embedding_model_name: str):
     def _embed(texts):
         # Keep compatibility across LightRAG versions that renamed keyword args.
@@ -94,7 +109,9 @@ def create_lightrag_client(config):
     neo4j_password = _require_config_value(config, "neo4j_password", "NEO4J_PASSWORD")
     qdrant_url = _require_config_value(config, "qdrant_url", "QDRANT_URL")
 
-    openai_base_url = getattr(config, "openai_base_url", "") or os.getenv("OPENAI_BASE_URL", "")
+    openai_base_url = _normalize_openai_base_url(
+        getattr(config, "openai_base_url", "") or os.getenv("OPENAI_BASE_URL", "")
+    )
     llm_model_name = getattr(config, "llm_model_name", "gpt-4o-mini")
     embedding_model_name = getattr(config, "embedding_model_name", "text-embedding-3-small")
     working_dir = getattr(config, "working_dir", "./lightrag_workdir")
@@ -106,6 +123,9 @@ def create_lightrag_client(config):
     os.environ["OPENAI_API_KEY"] = openai_api_key
     if openai_base_url:
         os.environ["OPENAI_BASE_URL"] = openai_base_url
+    elif "OPENAI_BASE_URL" in os.environ:
+        # Prevent downstream clients from accidentally reading an invalid leftover value.
+        del os.environ["OPENAI_BASE_URL"]
 
     openai_complete_if_cache, openai_embed = _get_openai_provider_functions()
     llm_complete_func = _build_openai_llm_func(openai_complete_if_cache, llm_model_name)
@@ -120,15 +140,18 @@ def create_lightrag_client(config):
     if "model_name" in inspect.signature(EmbeddingFunc).parameters:
         embedding_func_kwargs["model_name"] = embedding_model_name
 
+    llm_model_kwargs: Dict[str, Any] = {
+        "api_key": openai_api_key,
+    }
+    if openai_base_url:
+        llm_model_kwargs["base_url"] = openai_base_url
+
     ctor_kwargs: Dict[str, Any] = {
         "working_dir": working_dir,
         "llm_model_func": llm_complete_func,
         "llm_model_name": llm_model_name,
         "llm_model_max_async": 4,
-        "llm_model_kwargs": {
-            "api_key": openai_api_key,
-            "base_url": openai_base_url,
-        },
+        "llm_model_kwargs": llm_model_kwargs,
         "graph_storage": "Neo4JStorage",
         "graph_storage_kwargs": {
             "uri": neo4j_uri,
