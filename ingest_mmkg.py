@@ -255,6 +255,8 @@ def ingest_dataset(
     use_vlm: bool,
     vlm_provider: str,
     vlm_model_name: str,
+    log_vlm: bool,
+    vlm_log_max_chars: int,
     openai_api_key: str,
     openai_base_url: str,
     lightrag_client,
@@ -270,7 +272,10 @@ def ingest_dataset(
         max_items=max_items,
     )
 
-    print(f"[ingest] {len(qids)} items selected for split='{split}'")
+    print(
+        f"[ingest] {len(qids)} items selected for split='{split}'"
+        + (" (capped by --max-items)" if max_items else "")
+    )
 
     stats = {
         "total": 0,
@@ -318,6 +323,11 @@ def ingest_dataset(
 
                 if vision_text:
                     stats["vlm_success"] += 1
+                    if log_vlm:
+                        snippet = vision_text[:vlm_log_max_chars]
+                        if len(vision_text) > vlm_log_max_chars:
+                            snippet += "..."
+                        tqdm.write(f"[VLM OUTPUT] qid={qid}: {snippet}")
             except Exception as e:
                 tqdm.write(f"[VLM ERROR] qid={qid}: {e}")
 
@@ -387,6 +397,17 @@ def main() -> None:
         default="HuggingFaceTB/SmolVLM-Instruct",
         help="If provider=smallvlm, Hugging Face model ID. If provider=openai, OpenAI vision model name.",
     )
+    parser.add_argument(
+        "--log-vlm",
+        action="store_true",
+        help="Log VLM output snippets during ingestion.",
+    )
+    parser.add_argument(
+        "--vlm-log-max-chars",
+        type=int,
+        default=240,
+        help="Max chars to print per VLM output when --log-vlm is enabled.",
+    )
 
     args = parser.parse_args()
 
@@ -422,6 +443,8 @@ def main() -> None:
         use_vlm=args.use_vlm,
         vlm_provider=args.vlm_provider,
         vlm_model_name=args.vlm_model_name,
+        log_vlm=args.log_vlm,
+        vlm_log_max_chars=args.vlm_log_max_chars,
         openai_api_key=args.openai_api_key,
         openai_base_url=args.openai_base_url,
         lightrag_client=lightrag_client,
