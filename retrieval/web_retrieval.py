@@ -1,4 +1,4 @@
-from langchain_community.utilities import SerpAPIWrapper
+from langchain_community.utilities import GoogleSerperAPIWrapper
 from langchain_openai import ChatOpenAI
 
 from retrieval.base_retrieval import BaseRetrieval
@@ -9,14 +9,14 @@ class WebRetrieval(BaseRetrieval):
         self.config = config
         self.search_engine = "Google"
         
-        serpapi_api_key = getattr(config, 'serpapi_api_key', '')
+        serper_api_key = getattr(config, 'serper_api_key', '')
         self.top_k = getattr(config, 'top_k', 4)
         web_llm_model = getattr(config, 'web_llm_model_name', 'gpt-4o-mini')
         openai_api_key = getattr(config, 'openai_api_key', '')
         openai_base_url = getattr(config, 'openai_base_url', '')
 
-        self.client = SerpAPIWrapper(
-            serpapi_api_key=serpapi_api_key
+        self.client = GoogleSerperAPIWrapper(
+            serper_api_key=serper_api_key
         )
 
         self.llm = ChatOpenAI(
@@ -33,6 +33,7 @@ class WebRetrieval(BaseRetrieval):
         processed = []
         
         if isinstance(results, dict):
+            # Serper format: answerBox + organic
             if 'answerBox' in results or 'answer_box' in results:
                 answer = results.get('answerBox', results.get('answer_box', {}))
                 processed.append(
@@ -52,7 +53,7 @@ class WebRetrieval(BaseRetrieval):
         return "\n".join(processed) if processed else "No relevant results found"
     
     def generation(self, results_with_query):
-        """Use the configured chat model to generate an answer from search results."""
+        """Use Ollama model to generate an answer from search results."""
         try:
             answer = self.llm.invoke(results_with_query).content
         except Exception as e:

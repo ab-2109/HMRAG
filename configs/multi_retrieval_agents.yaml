@@ -5,7 +5,7 @@ embedding_model_name: "text-embedding-3-small"
 vlm_model_name: "HuggingFaceTB/SmolVLM-Instruct"
 top_k: 1
 mode: "mix"
-serpapi_api_key: ""
+serper_api_key: ""
 openai_api_key: ""
 openai_base_url: ""
 neo4j_uri: "bolt://localhost:7687"

@@ -11,7 +11,7 @@ This guide is aligned with the current codebase:
 
 1. Google Colab runtime (GPU recommended for SmolVLM)
 2. API keys and endpoints:
-- SerpAPI key (required for web retrieval)
+- Serper key (required for web retrieval)
 - OpenAI API key (required)
 - Neo4j URI, username, password (required)
 - Qdrant URL (required), API key (optional)
@@ -32,7 +32,7 @@ This guide is aligned with the current codebase:
 ### 3. Configure Secrets
 
 In Colab Secrets, set:
-- SERPAPI_API_KEY
+- SERPER_API_KEY
 - OPENAI_API_KEY
 - NEO4J_URI
 - NEO4J_USERNAME
@@ -44,7 +44,7 @@ Then load them in a cell:
 ```python
 from google.colab import userdata
 
-SERPAPI_API_KEY = userdata.get("SERPAPI_API_KEY")
+SERPER_API_KEY = userdata.get("SERPER_API_KEY")
 OPENAI_API_KEY = userdata.get("OPENAI_API_KEY")
 NEO4J_URI = userdata.get("NEO4J_URI")
 NEO4J_USERNAME = userdata.get("NEO4J_USERNAME")
@@ -75,7 +75,7 @@ except Exception:
   --output_root ./outputs \
   --caption_file ./dataset/ScienceQA/data/captions.json \
   --working_dir ./lightrag_workdir \
-  --serpapi_api_key "$SERPAPI_API_KEY" \
+  --serper_api_key "$SERPER_API_KEY" \
   --openai_api_key "$OPENAI_API_KEY" \
   --llm_model_name gpt-4o-mini \
   --decompose_model_name gpt-4o-mini \
@@ -102,7 +102,7 @@ except Exception:
   --output_root ./outputs \
   --caption_file ./dataset/ScienceQA/data/captions.json \
   --working_dir ./lightrag_workdir \
-  --serpapi_api_key "$SERPAPI_API_KEY" \
+  --serper_api_key "$SERPER_API_KEY" \
   --openai_api_key "$OPENAI_API_KEY" \
   --neo4j_uri "$NEO4J_URI" \
   --neo4j_username "$NEO4J_USERNAME" \

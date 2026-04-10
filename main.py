@@ -55,8 +55,8 @@ def parse_args():
     parser.add_argument('--vlm_model_name', type=str, default='HuggingFaceTB/SmolVLM-Instruct',
                         help='Vision-language model for image reasoning')
     parser.add_argument('--mode', type=str, default='hybrid')
-    parser.add_argument('--serpapi_api_key', type=str, default='',
-                        help='API key for SerpAPI web search')
+    parser.add_argument('--serper_api_key', type=str, default='',
+                        help='API key for Serper web search')
     parser.add_argument('--web_llm_model_name', type=str, default='gpt-4o-mini',
                         help='LLM model name for web retrieval generation')
     parser.add_argument('--top_k', type=int, default=4)

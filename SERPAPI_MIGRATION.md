@@ -1,4 +1,7 @@
-# Migration from Serper to SerpAPI
+# Historical note: Migration from Serper to SerpAPI
+
+> Current codebase now uses **Serper** again (`--serper_api_key`).
+> This file is preserved only as historical context.
 
 ## Changes Made
 

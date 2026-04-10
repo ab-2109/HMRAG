@@ -60,7 +60,7 @@ We utilize LightRAG, a lightweight framework to construct MMKGs. For comprehensi
 ```bash
 python main.py \
     --working_dir <path> \
-    --serpapi_api_key <serpapi_key> \
+    --serper_api_key <serper_key> \
     --openai_api_key <openai_key> \
     --neo4j_uri bolt://localhost:7687 \
     --neo4j_username neo4j \
