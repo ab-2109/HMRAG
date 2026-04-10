@@ -46,7 +46,44 @@ def _build_openai_embedding_func(openai_embed, embedding_model_name: str):
                 embed_model=embedding_model_name,
             )
 
+    # Some LightRAG storage backends look for model_name on embedding func
+    # to isolate collection/workspace names.
+    setattr(_embed, "model_name", embedding_model_name)
     return _embed
+
+
+def _build_openai_llm_func(openai_complete_if_cache, llm_model_name: str):
+    """Build a version-tolerant OpenAI completion adapter for LightRAG.
+
+    LightRAG/OpenAI provider signatures differ between versions:
+    - (prompt, ...)
+    - (model, prompt, ...)
+    This adapter supports both.
+    """
+
+    provider_sig = inspect.signature(openai_complete_if_cache)
+    params = list(provider_sig.parameters.keys())
+    model_first = len(params) >= 2 and params[0] == "model" and params[1] == "prompt"
+
+    if model_first:
+        async def _llm(prompt, system_prompt=None, history_messages=None, **kwargs):
+            return await openai_complete_if_cache(
+                llm_model_name,
+                prompt,
+                system_prompt=system_prompt,
+                history_messages=history_messages,
+                **kwargs,
+            )
+    else:
+        async def _llm(prompt, system_prompt=None, history_messages=None, **kwargs):
+            return await openai_complete_if_cache(
+                prompt,
+                system_prompt=system_prompt,
+                history_messages=history_messages,
+                **kwargs,
+            )
+
+    return _llm
 
 
 def create_lightrag_client(config):
@@ -70,7 +107,18 @@ def create_lightrag_client(config):
     if openai_base_url:
         os.environ["OPENAI_BASE_URL"] = openai_base_url
 
-    llm_complete_func, openai_embed = _get_openai_provider_functions()
+    openai_complete_if_cache, openai_embed = _get_openai_provider_functions()
+    llm_complete_func = _build_openai_llm_func(openai_complete_if_cache, llm_model_name)
+
+    embedding_func = _build_openai_embedding_func(openai_embed, embedding_model_name)
+    embedding_func_kwargs: Dict[str, Any] = {
+        "embedding_dim": 1536,
+        "max_token_size": 8192,
+        "func": embedding_func,
+    }
+    # Newer LightRAG versions accept this and use it for data isolation naming.
+    if "model_name" in inspect.signature(EmbeddingFunc).parameters:
+        embedding_func_kwargs["model_name"] = embedding_model_name
 
     ctor_kwargs: Dict[str, Any] = {
         "working_dir": working_dir,
@@ -94,11 +142,7 @@ def create_lightrag_client(config):
             "api_key": qdrant_api_key,
             "collection_name": qdrant_collection,
         },
-        "embedding_func": EmbeddingFunc(
-            embedding_dim=1536,
-            max_token_size=8192,
-            func=_build_openai_embedding_func(openai_embed, embedding_model_name),
-        ),
+        "embedding_func": EmbeddingFunc(**embedding_func_kwargs),
     }
 
     supported_params = set(inspect.signature(LightRAG.__init__).parameters.keys())
