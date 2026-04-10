@@ -37,11 +37,15 @@ Or setup environment with provided YML :
 conda env create -f environment.yml
 ```
 
-To facilitate your running, we recommend installing the `Ollama` library to download models. You can also use `Hugging Face` to download the corresponding LLMs.
+This project now uses OpenAI APIs for LightRAG extraction/query and embeddings, Neo4j for graph storage, Qdrant for vector storage, and SmolVLM for local vision reasoning.
 
-**Ollama**  [https://ollama.com/](https://ollama.com/)
+**OpenAI**  [https://platform.openai.com/](https://platform.openai.com/)
 
-**Hugging Face**  [https://huggingface.co/](https://huggingface.co/)
+**Neo4j**  [https://neo4j.com/](https://neo4j.com/)
+
+**Qdrant**  [https://qdrant.tech/](https://qdrant.tech/)
+
+**SmolVLM**  [https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct](https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct)
 
 ## Usage
 If you want to test with the dataset we used, you can run to download the data.
@@ -54,10 +58,17 @@ We utilize LightRAG, a lightweight framework to construct MMKGs. For comprehensi
 
 ### Multi-Agent Inference
 ```bash
-python main.py --working_dir <path> --serpapi_api_key <key>
+python main.py \
+    --working_dir <path> \
+    --serpapi_api_key <serpapi_key> \
+    --openai_api_key <openai_key> \
+    --neo4j_uri bolt://localhost:7687 \
+    --neo4j_username neo4j \
+    --neo4j_password <neo4j_password> \
+    --qdrant_url http://localhost:6333
 ```
 
-Note: OpenAI API key is not required. The system uses Ollama for LLM inference.
+Note: OpenAI API key is required. The system does not rely on local Ollama for LightRAG extraction or embeddings.
 
 
 ### Zero-Shot Multimodal Question Answering

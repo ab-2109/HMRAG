@@ -9,13 +9,14 @@ hnswlib
 langchain
 langchain-community
 langchain-core
+langchain-openai
 lightrag-hku
 nano-vectordb
 neo4j
 networkx
 numpy
-ollama
 openai
+qdrant-client
 oracledb
 psycopg-pool
 psycopg[binary,pool]
@@ -33,7 +34,6 @@ torch
 tqdm
 transformers
 xxhash
-qwen_vl_utils
 opencv-python
 termcolor
 bitsandbytes

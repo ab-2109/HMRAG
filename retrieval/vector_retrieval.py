@@ -1,8 +1,7 @@
-from lightrag import LightRAG, QueryParam
-from lightrag.llm.ollama import ollama_model_complete, ollama_embed
-from lightrag.utils import EmbeddingFunc
+from lightrag import QueryParam
 
 from retrieval.base_retrieval import BaseRetrieval
+from retrieval.lightrag_factory import create_lightrag_client
 
 
 class VectorRetrieval(BaseRetrieval):
@@ -10,25 +9,7 @@ class VectorRetrieval(BaseRetrieval):
         self.config = config
         self.mode = getattr(config, 'mode', 'naive')
         self.top_k = getattr(config, 'top_k', 4)
-        ollama_host = getattr(config, 'ollama_base_url', 'http://localhost:11434')
-        model_name = getattr(config, 'llm_model_name', 'qwen2.5:7b')
-        working_dir = getattr(config, 'working_dir', './lightrag_workdir')
-
-        self.client = LightRAG(
-            working_dir=working_dir,
-            llm_model_func=ollama_model_complete,
-            llm_model_name=model_name,
-            llm_model_max_async=4,
-            # llm_model_max_token_size=65536,
-            llm_model_kwargs={"host": ollama_host, "options": {"num_ctx": 65536}},
-            embedding_func=EmbeddingFunc(
-                embedding_dim=768,
-                max_token_size=8192,
-                func=lambda texts: ollama_embed.func(
-                    texts, embed_model="nomic-embed-text", host=ollama_host
-                ),
-            ),
-        )
+        self.client = create_lightrag_client(config)
         self.results = []
 
     def find_top_k(self, query):
@@ -42,7 +23,7 @@ class VectorRetrieval(BaseRetrieval):
         try:
             self.results = self.client.query(
                 query,
-                param=QueryParam(mode="naive", top_k=self.top_k)
+                param=QueryParam(mode=self.mode, top_k=self.top_k)
             )
         except Exception as e:
             print(f"VectorRetrieval error: {e}")

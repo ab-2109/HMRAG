@@ -1,4 +1,4 @@
-llm_model_name: "qwen2.5:7b"
+decompose_model_name: "gpt-4o-mini"
 temperature: 0.0
 max_tokens: 512
 max_intents: 3

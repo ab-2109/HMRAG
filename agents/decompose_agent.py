@@ -1,18 +1,21 @@
 import os
 from typing import List
 from langchain_core.prompts import PromptTemplate
-from langchain_ollama import OllamaLLM
+from langchain_openai import ChatOpenAI
 
 
 class DecomposeAgent:
     def __init__(self, config):
         self.config = config
-        # Use Ollama to connect to the locally deployed model
-        self.llm = OllamaLLM(
-            base_url=getattr(config, 'ollama_base_url', 'http://localhost:11434'),
-            model=getattr(config, 'llm_model_name', 'qwen2.5:7b'),
+        self.llm = ChatOpenAI(
+            api_key=getattr(config, 'openai_api_key', ''),
+            base_url=getattr(config, 'openai_base_url', '') or None,
+            model=getattr(config, 'decompose_model_name', 'gpt-4o-mini'),
             temperature=getattr(config, 'temperature', 0.35),
         )
+
+    def _invoke(self, prompt: str) -> str:
+        return self.llm.invoke(prompt).content
 
     def count_intents(self, query: str) -> int:
         """
@@ -30,7 +33,7 @@ class DecomposeAgent:
         max_attempts = 3
         for attempt in range(max_attempts):
             formatted_prompt = prompt.format(query=query)
-            response = self.llm.invoke(formatted_prompt)
+            response = self._invoke(formatted_prompt)
             try:
                 # Extract first integer from response
                 import re
@@ -70,7 +73,7 @@ class DecomposeAgent:
             "separated by '||', without additional explanations:\n{query}\nList of sub-queries: "
         )
         formatted_prompt = prompt.format(query=query)
-        response = self.llm.invoke(formatted_prompt)
+        response = self._invoke(formatted_prompt)
         sub_queries = [q.strip() for q in response.split("||") if q.strip()]
         # If splitting failed, return the original query
         if not sub_queries:

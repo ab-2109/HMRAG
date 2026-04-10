@@ -91,6 +91,7 @@ dependencies:
       - joblib==1.4.2
       - jsonpickle==4.0.2
       - kiwisolver==1.4.8
+      - langchain-openai==0.3.10
       - llvmlite==0.44.0
       - markupsafe==3.0.2
       - matplotlib==3.10.1
@@ -121,9 +122,9 @@ dependencies:
       - nvidia-nccl-cu12==2.21.5
       - nvidia-nvjitlink-cu12==12.4.127
       - nvidia-nvtx-cu12==12.4.127
-      - ollama==0.4.7
       - open-clip-torch==2.31.0
       - openai==1.66.3
+      - qdrant-client==1.13.3
       - opencv-python==4.11.0.86
       - oracledb==3.0.0
       - packaging==24.2
@@ -157,7 +158,6 @@ dependencies:
       - pytz==2025.1
       - pyvis==0.3.2
       - pyyaml==6.0.2
-      - qwen-vl-utils==0.0.10
       - regex==2024.11.6
       - requests==2.32.3
       - s3transfer==0.11.3

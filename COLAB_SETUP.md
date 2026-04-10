@@ -1,20 +1,20 @@
-# Running HM-RAG on Google Colab
+# Running HM-RAG on Google Colab (OpenAI + Neo4j + Qdrant + SmolVLM)
 
-This guide provides step-by-step instructions for running HM-RAG on Google Colab.
-
-## Quick Start
-
-### Option 1: Use the Notebook
-Upload `colab_setup.ipynb` to Google Colab and run the cells sequentially.
-
-### Option 2: Manual Setup
+This guide is aligned with the current codebase:
+- LightRAG LLM and entity extraction: OpenAI API (default model: gpt-4o-mini)
+- LightRAG embeddings: text-embedding-3-small
+- Graph storage: Neo4j
+- Vector storage: Qdrant
+- VLM for image reasoning: SmolVLM
 
 ## Prerequisites
 
-1. **Google Colab Account** with GPU runtime (recommended)
-2. **API Keys**:
-   - SerpAPI Key (for web search, get from https://serpapi.com/) - **Required**
-   - OpenAI API Key (optional - system uses Ollama by default)
+1. Google Colab runtime (GPU recommended for SmolVLM)
+2. API keys and endpoints:
+- SerpAPI key (required for web retrieval)
+- OpenAI API key (required)
+- Neo4j URI, username, password (required)
+- Qdrant URL (required), API key (optional)
 
 ## Step-by-Step Setup
 
@@ -29,17 +29,32 @@ Upload `colab_setup.ipynb` to Google Colab and run the cells sequentially.
 !pip install -q -r requirements.txt
 ```
 
-### 3. Setup API Keys
+### 3. Configure Secrets
 
-Store your API keys in Colab Secrets (left sidebar → 🔑 Secrets):
-- `SERPAPI_API_KEY` (Required)
-- `OPENAI_API_KEY` (Optional - not used, kept for compatibility)
+In Colab Secrets, set:
+- SERPAPI_API_KEY
+- OPENAI_API_KEY
+- NEO4J_URI
+- NEO4J_USERNAME
+- NEO4J_PASSWORD
+- QDRANT_URL
+- QDRANT_API_KEY (optional)
 
-Then access them:
+Then load them in a cell:
 ```python
 from google.colab import userdata
-SERPAPI_API_KEY = userdata.get('SERPAPI_API_KEY')
-# OPENAI_API_KEY = userdata.get('OPENAI_API_KEY')  # Optional
+
+SERPAPI_API_KEY = userdata.get("SERPAPI_API_KEY")
+OPENAI_API_KEY = userdata.get("OPENAI_API_KEY")
+NEO4J_URI = userdata.get("NEO4J_URI")
+NEO4J_USERNAME = userdata.get("NEO4J_USERNAME")
+NEO4J_PASSWORD = userdata.get("NEO4J_PASSWORD")
+QDRANT_URL = userdata.get("QDRANT_URL")
+
+try:
+    QDRANT_API_KEY = userdata.get("QDRANT_API_KEY")
+except Exception:
+    QDRANT_API_KEY = ""
 ```
 
 ### 4. Download Dataset
@@ -52,183 +67,79 @@ SERPAPI_API_KEY = userdata.get('SERPAPI_API_KEY')
 !mkdir -p outputs lightrag_workdir
 ```
 
-### 6. Run Inference (Test)
-
-**Small test with 5 examples:**
+### 6. Run Inference (Quick Test)
 ```bash
 !python3 main.py \
-    --data_root ./dataset/ScienceQA/data \
-    --image_root ./dataset/ScienceQA/images \
-    --output_root ./outputs \
-    --caption_file ./dataset/ScienceQA/captions.json \
-    --working_dir ./lightrag_workdir \
-    --serpapi_api_key "${SERPAPI_API_KEY}" \
-    --test_split test \
-    --test_number 5 \
-    --shot_number 0 \
-    --label test_run \
-    --save_every 5
+  --data_root ./dataset/ScienceQA/data \
+  --image_root ./dataset/ScienceQA/images \
+  --output_root ./outputs \
+  --caption_file ./dataset/ScienceQA/data/captions.json \
+  --working_dir ./lightrag_workdir \
+  --serpapi_api_key "$SERPAPI_API_KEY" \
+  --openai_api_key "$OPENAI_API_KEY" \
+  --llm_model_name gpt-4o-mini \
+  --decompose_model_name gpt-4o-mini \
+  --web_llm_model_name gpt-4o-mini \
+  --embedding_model_name text-embedding-3-small \
+  --vlm_model_name HuggingFaceTB/SmolVLM-Instruct \
+  --neo4j_uri "$NEO4J_URI" \
+  --neo4j_username "$NEO4J_USERNAME" \
+  --neo4j_password "$NEO4J_PASSWORD" \
+  --qdrant_url "$QDRANT_URL" \
+  --qdrant_api_key "$QDRANT_API_KEY" \
+  --test_split test \
+  --test_number 5 \
+  --shot_number 0 \
+  --label test_run \
+  --save_every 5
 ```
 
-### 7. Run Full Inference
-
-**Full dataset:**
+### 7. Full Run
 ```bash
 !python3 main.py \
-    --data_root ./dataset/ScienceQA/data \
-    --image_root ./dataset/ScienceQA/images \
-    --output_root ./outputs \
-    --caption_file ./dataset/ScienceQA/captions.json \
-    --working_dir ./lightrag_workdir \
-    --serpapi_api_key "${SERPAPI_API_KEY}" \
-    --test_split test \
-    --shot_number 2 \
-    --label full_run \
-    --save_every 50 \
-    --use_caption
+  --data_root ./dataset/ScienceQA/data \
+  --image_root ./dataset/ScienceQA/images \
+  --output_root ./outputs \
+  --caption_file ./dataset/ScienceQA/data/captions.json \
+  --working_dir ./lightrag_workdir \
+  --serpapi_api_key "$SERPAPI_API_KEY" \
+  --openai_api_key "$OPENAI_API_KEY" \
+  --neo4j_uri "$NEO4J_URI" \
+  --neo4j_username "$NEO4J_USERNAME" \
+  --neo4j_password "$NEO4J_PASSWORD" \
+  --qdrant_url "$QDRANT_URL" \
+  --qdrant_api_key "$QDRANT_API_KEY" \
+  --test_split test \
+  --shot_number 2 \
+  --label full_run \
+  --save_every 50 \
+  --use_caption
 ```
 
-### 8. View Results
-```python
-import json
+## Colab Coherency Notes
 
-with open('outputs/test_run_test.json', 'r') as f:
-    results = json.load(f)
-
-print(f"Total results: {len(results)}")
-```
-
-### 9. Download Results
-```python
-from google.colab import files
-
-# Download single file
-files.download('outputs/test_run_test.json')
-
-# Or zip all outputs
-!zip -r outputs.zip outputs/
-files.download('outputs.zip')
-```
-
-## Important Notes for Colab
-
-### 1. Ollama is Complex on Colab
-The code uses Ollama for local LLM inference. On Colab, this is challenging because:
-- Ollama needs to run as a background service
-- Models are large and slow to download
-- Colab has limited persistent storage
-
-**Solution:** Follow the Ollama installation steps in the notebook or use a pre-configured environment.
-
-### 2. GPU Runtime
-For vision models (Qwen2.5-VL), enable GPU:
-- Runtime → Change runtime type → GPU → T4 or better
-
-### 3. Session Timeouts
-Colab sessions timeout after inactivity. For long runs:
-- Use `--save_every 10` to save frequently
-- Keep the browser tab active
-- Consider Colab Pro for longer sessions
-
-### 4. Storage Limits
-Free Colab has limited disk space. The ScienceQA dataset is large:
-- Use `--test_number` to limit examples during testing
-- Mount Google Drive for more storage:
-```python
-from google.colab import drive
-drive.mount('/content/drive')
-```
-
-## Command-Line Arguments Reference
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--data_root` | Required | Path to problems.json and pid_splits.json |
-| `--image_root` | '' | Path to images directory |
-| `--output_root` | 'outputs' | Where to save results |
-| `--caption_file` | '' | Path to captions.json |
-| `--working_dir` | './lightrag_workdir' | LightRAG working directory |
-| `--llm_model_name` | 'qwen2.5:7b' | Ollama model name |
-| `--web_llm_model_name` | 'qwen2.5:7b' | Model for web retrieval |
-| `--mode` | 'hybrid' | Retrieval mode: naive/hybrid/mix |
-| `--serpapi_api_key` | '' | SerpAPI key for web search |
-| `--ollama_base_url` | 'http://localhost:11434' | Ollama server URL |
-| `--test_split` | 'test' | Dataset split: test/val/minival |
-| `--test_number` | -1 | Number of examples (-1 = all) |
-| `--shot_number` | 0 | Number of few-shot examples |
-| `--label` | 'exp' | Experiment label for output file |
-| `--debug` | False | Run only 10 examples |
-| `--save_every` | 50 | Save results every N examples |
-| `--use_caption` | False | Use image captions |
-| `--seed` | 42 | Random seed |
+1. Neo4j and Qdrant must be externally reachable from Colab.
+2. If Neo4j or Qdrant are local on your laptop, expose them with a secure tunnel before running.
+3. GPU in Colab primarily helps SmolVLM. OpenAI and remote databases run off-Colab.
+4. The existing colab_setup.ipynb in this repo still contains old Ollama-era cells and should be treated as outdated.
 
 ## Troubleshooting
 
-### "No module named 'lightrag'"
+### Missing lightrag
 ```bash
-!pip install lightrag-hku
+!pip install -q lightrag-hku
 ```
 
-### "No module named 'qwen_vl_utils'"
-```bash
-!pip install qwen_vl_utils
-```
+### Neo4j connection/auth errors
+- Verify scheme and port in NEO4J_URI (example: bolt://host:7687)
+- Verify username/password and database permissions
+- Verify network ingress/firewall allows Colab egress IPs
 
-### Out of Memory
-- Reduce `--test_number`
-- Use smaller models
-- Restart runtime: Runtime → Restart runtime
+### Qdrant connection errors
+- Verify QDRANT_URL format (example: https://host:6333)
+- Verify API key if cluster requires it
 
-### Dataset Download Fails
-Check if `dataset/download_ScienceQA.sh` exists and is executable:
-```bash
-!chmod +x dataset/download_ScienceQA.sh
-!bash dataset/download_ScienceQA.sh
-```
-
-### Ollama Connection Errors
-The code tries to connect to `localhost:11434` for Ollama. On Colab:
-1. Install Ollama (see notebook instructions)
-2. Start Ollama service in background
-3. Pull required models: `qwen2.5:7b`, `nomic-embed-text`
-
-## Expected Output
-
-After successful run:
-```
-====Input Arguments====
-...
-number of test problems: 5
-
-training question ids for prompting: []
-
-Results saved to outputs/test_run_test.json after 5 examples.
-Number of correct answers: 3/5
-Accuracy: 0.6000
-Failed question ids: ['123', '456']
-Number of failed questions: 2
-```
-
-## Tips for Best Results
-
-1. **Start Small**: Use `--test_number 5` first
-2. **Enable Captions**: Add `--use_caption` for better accuracy
-3. **Use Few-Shot**: Try `--shot_number 2` for better prompting
-4. **Save Frequently**: Use `--save_every 10` on Colab
-5. **Monitor Resources**: Check GPU/RAM usage in Colab
-
-## Getting API Keys
-
-### SerpAPI Key
-1. Go to https://serpapi.com/
-2. Sign up (free tier: 100 searches/month)
-3. Get your API key from dashboard
-4. Copy and save it securely
-
-Note: OpenAI API key is not required. The system uses Ollama for all LLM inference.
-
-## Support
-
-For issues, check:
-- GitHub Issues: https://github.com/ab-2109/HMRAG/issues
-- Original Paper: [HM-RAG arXiv](https://arxiv.org/abs/2504.12330)
+### Slow or OOM in VLM stage
+- Use a GPU runtime
+- Reduce test_number for quick checks
+- Keep VLM model as SmolVLM (default)

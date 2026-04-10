@@ -1,5 +1,5 @@
 from langchain_community.utilities import SerpAPIWrapper
-from langchain_ollama import OllamaLLM
+from langchain_openai import ChatOpenAI
 
 from retrieval.base_retrieval import BaseRetrieval
 
@@ -11,15 +11,17 @@ class WebRetrieval(BaseRetrieval):
         
         serpapi_api_key = getattr(config, 'serpapi_api_key', '')
         self.top_k = getattr(config, 'top_k', 4)
-        ollama_base_url = getattr(config, 'ollama_base_url', 'http://localhost:11434')
-        web_llm_model = getattr(config, 'web_llm_model_name', 'qwen2.5:7b')
+        web_llm_model = getattr(config, 'web_llm_model_name', 'gpt-4o-mini')
+        openai_api_key = getattr(config, 'openai_api_key', '')
+        openai_base_url = getattr(config, 'openai_base_url', '')
 
         self.client = SerpAPIWrapper(
             serpapi_api_key=serpapi_api_key
         )
 
-        self.llm = OllamaLLM(
-            base_url=ollama_base_url,
+        self.llm = ChatOpenAI(
+            api_key=openai_api_key,
+            base_url=openai_base_url if openai_base_url else None,
             model=web_llm_model,
             temperature=0.35,
         )
@@ -31,15 +33,16 @@ class WebRetrieval(BaseRetrieval):
         processed = []
         
         if isinstance(results, dict):
-            if 'answerBox' in results:
-                answer = results['answerBox']
+            if 'answerBox' in results or 'answer_box' in results:
+                answer = results.get('answerBox', results.get('answer_box', {}))
                 processed.append(
                     f"Direct answer: {answer.get('answer', '')}\n"
                     f"Source: {answer.get('link', '')}\n"
                 )
             
-            if 'organic' in results:
-                for item in results['organic'][:max_results]:
+            organic = results.get('organic', results.get('organic_results', []))
+            if organic:
+                for item in organic[:max_results]:
                     processed.append(
                         f"[{item.get('title', 'No title')}]\n"
                         f"{item.get('snippet', 'No snippet')}\n"
@@ -49,9 +52,9 @@ class WebRetrieval(BaseRetrieval):
         return "\n".join(processed) if processed else "No relevant results found"
     
     def generation(self, results_with_query):
-        """Use Ollama model to generate an answer from search results."""
+        """Use the configured chat model to generate an answer from search results."""
         try:
-            answer = self.llm.invoke(results_with_query)
+            answer = self.llm.invoke(results_with_query).content
         except Exception as e:
             print(f"WebRetrieval generation error: {e}")
             answer = f"Web generation failed: {str(e)}"

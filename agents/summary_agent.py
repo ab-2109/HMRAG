@@ -1,9 +1,11 @@
 from collections import Counter
-from langchain_ollama import OllamaLLM
+from langchain_openai import ChatOpenAI
 import re
 from transformers import AutoProcessor
 import random
 import os
+from PIL import Image
+import torch
 
 from prompts.base_prompt import build_prompt
 
@@ -11,30 +13,45 @@ from prompts.base_prompt import build_prompt
 class SummaryAgent:
     def __init__(self, config):
         self.config = config
-        self.text_llm = OllamaLLM(
-            base_url=getattr(config, 'ollama_base_url', 'http://localhost:11434'),
-            model=getattr(config, 'llm_model_name', 'qwen2.5:7b')
+        self.text_llm = ChatOpenAI(
+            api_key=getattr(config, 'openai_api_key', ''),
+            base_url=getattr(config, 'openai_base_url', '') or None,
+            model=getattr(config, 'llm_model_name', 'gpt-4o-mini')
         )
         # Lazy-load the vision model only when needed
         self._vision_model = None
         self._processor = None
+        self._vision_device = None
 
     def _load_vision_model(self):
-        """Lazy-load Qwen VL model only when image reasoning is needed."""
+        """Lazy-load SmolVLM model only when image reasoning is needed."""
         if self._vision_model is None:
             try:
-                from transformers import Qwen2_5_VLForConditionalGeneration
-                from qwen_vl_utils import process_vision_info
+                from transformers import AutoModelForVision2Seq
+
+                model_name = getattr(
+                    self.config,
+                    'vlm_model_name',
+                    'HuggingFaceTB/SmolVLM-Instruct',
+                )
                 self._processor = AutoProcessor.from_pretrained(
-                    "Qwen/Qwen2.5-VL-7B-Instruct", use_fast=True
+                    model_name,
+                    use_fast=True,
                 )
-                self._vision_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                    "Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype="auto", device_map="auto"
+                self._vision_model = AutoModelForVision2Seq.from_pretrained(
+                    model_name,
+                    torch_dtype="auto",
+                    device_map="auto",
                 )
+                self._vision_device = next(self._vision_model.parameters()).device
             except Exception as e:
                 print(f"Warning: Could not load vision model: {e}")
                 self._vision_model = None
                 self._processor = None
+                self._vision_device = None
+
+    def _invoke_text(self, prompt: str) -> str:
+        return self.text_llm.invoke(prompt).content
 
     def summarize(self, problems, shot_qids, qid, cur_ans) -> str:
         problem = problems[qid]
@@ -86,18 +103,18 @@ class SummaryAgent:
         prompt = f"{prompt} The answer is A, B, C, D, E or FAILED. \n BECAUSE: "
         
         if not image_path:
-            output = self.text_llm.invoke(prompt)
+            output = self._invoke_text(prompt)
         else:
-            output = self.qwen_reasoning(prompt, image_path)
+            output = self.smallvlm_reasoning(prompt, image_path)
             if output:
                 print(f"**** output: {output}")
-                output = self.text_llm.invoke(
+                output = self._invoke_text(
                     f"{output[0]} Summary the above information with format "
                     f"'Answer: The answer is A, B, C, D, E or FAILED.\n BECAUSE: '"
                 )
             else:
                 # Fallback to text-only if vision model fails
-                output = self.text_llm.invoke(prompt)
+                output = self._invoke_text(prompt)
         return output
     
     def get_result(self, output):
@@ -119,48 +136,46 @@ class SummaryAgent:
         else:
             return random.choice(range(len(choices)))
 
-    def qwen_reasoning(self, prompt, image_path):
-        """Use Qwen VL model for multimodal reasoning with image."""
+    def smallvlm_reasoning(self, prompt, image_path):
+        """Use SmolVLM model for multimodal reasoning with image."""
         self._load_vision_model()
         if self._vision_model is None or self._processor is None:
             print("Warning: Vision model not available, falling back to text-only.")
             return None
-        
-        try:
-            from qwen_vl_utils import process_vision_info
-        except ImportError:
-            print("Warning: qwen_vl_utils not installed, falling back to text-only.")
+        if not os.path.exists(image_path):
+            print(f"Warning: image not found at {image_path}, falling back to text-only.")
             return None
-        
+
         messages = [
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "image",
-                        "image": image_path,
                     },
                     {"type": "text", "text": prompt},
                 ],
             }
         ]
 
-        text = self._processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+        chat_text = self._processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
         )
-        image_inputs, video_inputs = process_vision_info(messages)
+        image = Image.open(image_path).convert("RGB")
         inputs = self._processor(
-            text=[text],
-            images=image_inputs,
-            videos=video_inputs,
+            text=[chat_text],
+            images=[image],
             padding=True,
             return_tensors="pt",
         )
-        inputs = inputs.to(self._vision_model.device)
+        target_device = self._vision_device or torch.device("cpu")
+        inputs = {k: v.to(target_device) for k, v in inputs.items()}
 
-        generated_ids = self._vision_model.generate(**inputs, max_new_tokens=2048)
+        generated_ids = self._vision_model.generate(**inputs, max_new_tokens=1024)
         generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs["input_ids"], generated_ids)
         ]
         output_text = self._processor.batch_decode(
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False

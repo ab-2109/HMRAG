@@ -46,24 +46,38 @@ def parse_args():
     # VectorRetrieval / LightRAG settings
     parser.add_argument('--working_dir', type=str, default='./lightrag_workdir',
                         help='Working directory for LightRAG')
-    parser.add_argument('--llm_model_name', type=str, default='qwen2.5:7b')
+    parser.add_argument('--llm_model_name', type=str, default='gpt-4o-mini',
+                        help='OpenAI model used for LightRAG extraction/query and text reasoning')
+    parser.add_argument('--decompose_model_name', type=str, default='gpt-4o-mini',
+                        help='OpenAI model used by decomposition agent')
+    parser.add_argument('--embedding_model_name', type=str, default='text-embedding-3-small',
+                        help='OpenAI embedding model used by LightRAG')
+    parser.add_argument('--vlm_model_name', type=str, default='HuggingFaceTB/SmolVLM-Instruct',
+                        help='Vision-language model for image reasoning')
     parser.add_argument('--mode', type=str, default='hybrid')
     parser.add_argument('--serpapi_api_key', type=str, default='',
                         help='API key for SerpAPI web search')
-    parser.add_argument('--web_llm_model_name', type=str, default='qwen2.5:7b',
+    parser.add_argument('--web_llm_model_name', type=str, default='gpt-4o-mini',
                         help='LLM model name for web retrieval generation')
     parser.add_argument('--top_k', type=int, default=4)
-    # GPT/OpenAI settings (OPTIONAL - not currently used, system uses Ollama)
-    # parser.add_argument('--openai_key', type=str, default='')
-    # parser.add_argument('--engine', type=str, default='gpt-4o')
-    # parser.add_argument('--temperature', type=float, default=0.0)
-    # parser.add_argument('--max_tokens',
-    #                     type=int,
-    #                     default=512,
-    #                     help='The maximum number of tokens allowed for the generated answer.')
-    # Ollama settings (REQUIRED)
-    parser.add_argument('--ollama_base_url', type=str, default='http://localhost:11434',
-                        help='Base URL for Ollama server')
+    parser.add_argument('--openai_api_key', type=str, default=os.getenv('OPENAI_API_KEY', ''),
+                        help='OpenAI API key')
+    parser.add_argument('--openai_base_url', type=str, default=os.getenv('OPENAI_BASE_URL', ''),
+                        help='Optional OpenAI-compatible base URL')
+    parser.add_argument('--neo4j_uri', type=str, default=os.getenv('NEO4J_URI', ''),
+                        help='Neo4j Bolt/Neo4j URI, e.g. bolt://localhost:7687')
+    parser.add_argument('--neo4j_username', type=str, default=os.getenv('NEO4J_USERNAME', ''),
+                        help='Neo4j username')
+    parser.add_argument('--neo4j_password', type=str, default=os.getenv('NEO4J_PASSWORD', ''),
+                        help='Neo4j password')
+    parser.add_argument('--neo4j_database', type=str, default=os.getenv('NEO4J_DATABASE', 'neo4j'),
+                        help='Neo4j database name')
+    parser.add_argument('--qdrant_url', type=str, default=os.getenv('QDRANT_URL', ''),
+                        help='Qdrant endpoint URL, e.g. http://localhost:6333')
+    parser.add_argument('--qdrant_api_key', type=str, default=os.getenv('QDRANT_API_KEY', ''),
+                        help='Qdrant API key (if required)')
+    parser.add_argument('--qdrant_collection', type=str, default='hmrag_chunks',
+                        help='Qdrant collection name for LightRAG vectors')
 
     args = parser.parse_args()
     return args
