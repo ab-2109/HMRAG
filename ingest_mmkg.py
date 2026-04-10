@@ -15,6 +15,8 @@ Stack assumptions:
 """
 
 import argparse
+import asyncio
+import inspect
 import json
 import os
 from pathlib import Path
@@ -24,6 +26,30 @@ from openai import OpenAI
 from tqdm import tqdm
 
 from retrieval.lightrag_factory import create_lightrag_client
+
+
+_SMOLVLM_CACHE = {
+    "model_name": None,
+    "processor": None,
+    "model": None,
+}
+
+
+def _run_maybe_async(value):
+    if inspect.isawaitable(value):
+        return asyncio.run(value)
+    return value
+
+
+def _initialize_lightrag(rag) -> None:
+    init_fn = getattr(rag, "initialize_storages", None)
+    if callable(init_fn):
+        _run_maybe_async(init_fn())
+
+    # Some versions expose an explicit pipeline status init hook.
+    pipeline_fn = getattr(rag, "initialize_pipeline_status", None)
+    if callable(pipeline_fn):
+        _run_maybe_async(pipeline_fn())
 
 
 def _resolve_image_path(image_root: str, split: str, qid: str, image_name: str) -> str:
@@ -110,14 +136,31 @@ def _describe_image_openai(
 def _describe_image_smallvlm(image_path: str, question: str, hint: str, caption: str, model_name: str) -> str:
     from PIL import Image
     import torch
-    from transformers import AutoModelForVision2Seq, AutoProcessor
+    from transformers import AutoProcessor
 
-    processor = AutoProcessor.from_pretrained(model_name, use_fast=True)
-    model = AutoModelForVision2Seq.from_pretrained(
-        model_name,
-        torch_dtype="auto",
-        device_map="auto",
-    )
+    global _SMOLVLM_CACHE
+    if _SMOLVLM_CACHE["model"] is None or _SMOLVLM_CACHE["model_name"] != model_name:
+        try:
+            from transformers import AutoModelForVision2Seq as _AutoVisionModel
+        except Exception:
+            try:
+                from transformers import AutoModelForImageTextToText as _AutoVisionModel
+            except Exception as e:
+                raise ImportError(
+                    "SmolVLM auto model class not found in current transformers version. "
+                    "Please upgrade transformers or use --vlm-provider openai."
+                ) from e
+
+        _SMOLVLM_CACHE["processor"] = AutoProcessor.from_pretrained(model_name, use_fast=True)
+        _SMOLVLM_CACHE["model"] = _AutoVisionModel.from_pretrained(
+            model_name,
+            torch_dtype="auto",
+            device_map="auto",
+        )
+        _SMOLVLM_CACHE["model_name"] = model_name
+
+    processor = _SMOLVLM_CACHE["processor"]
+    model = _SMOLVLM_CACHE["model"]
 
     messages = [
         {
@@ -156,10 +199,57 @@ def _describe_image_smallvlm(image_path: str, question: str, hint: str, caption:
     return (output_text[0] if output_text else "").strip()
 
 
+def _select_qids(
+    problems: Dict,
+    split: str,
+    dataset_path: str,
+    pid_splits_path: str = "",
+    max_items: Optional[int] = None,
+) -> List[str]:
+    # 1) Explicit pid_splits path from user
+    candidate_paths: List[Path] = []
+    if pid_splits_path:
+        candidate_paths.append(Path(pid_splits_path))
+
+    # 2) Auto-discover sibling pid_splits.json next to problems.json
+    candidate_paths.append(Path(dataset_path).parent / "pid_splits.json")
+
+    for p in candidate_paths:
+        if p.exists():
+            with open(p, "r", encoding="utf-8") as f:
+                pid_splits = json.load(f)
+            raw = pid_splits.get(split, [])
+            qids = [str(qid) for qid in raw if str(qid) in problems]
+            if max_items:
+                qids = qids[:max_items]
+            print(f"[ingest] Using pid_splits from {p} ({len(qids)} qids for split='{split}')")
+            return qids
+
+    # 3) Fallback to per-problem split field if present
+    any_split_field = any("split" in p for p in problems.values())
+    if any_split_field:
+        qids = [qid for qid, p in problems.items() if p.get("split") == split]
+        if max_items:
+            qids = qids[:max_items]
+        print(f"[ingest] Using problem['split'] field ({len(qids)} qids for split='{split}')")
+        return qids
+
+    # 4) Last resort: ingest everything
+    qids = list(problems.keys())
+    if max_items:
+        qids = qids[:max_items]
+    print(
+        "[ingest] Warning: no pid_splits.json or problem['split'] found. "
+        f"Falling back to all problems ({len(qids)} qids)."
+    )
+    return qids
+
+
 def ingest_dataset(
     dataset_path: str,
     image_root: str,
     split: str,
+    pid_splits_path: str,
     max_items: Optional[int],
     options: List[str],
     use_vlm: bool,
@@ -172,9 +262,13 @@ def ingest_dataset(
     with open(dataset_path, "r", encoding="utf-8") as f:
         problems = json.load(f)
 
-    qids = [qid for qid, p in problems.items() if p.get("split", split) == split]
-    if max_items:
-        qids = qids[:max_items]
+    qids = _select_qids(
+        problems=problems,
+        split=split,
+        dataset_path=dataset_path,
+        pid_splits_path=pid_splits_path,
+        max_items=max_items,
+    )
 
     print(f"[ingest] {len(qids)} items selected for split='{split}'")
 
@@ -241,7 +335,7 @@ def ingest_dataset(
         )
 
         try:
-            lightrag_client.insert(doc)
+            _run_maybe_async(lightrag_client.insert(doc))
             stats["inserted"] += 1
         except Exception as e:
             stats["failed"] += 1
@@ -256,6 +350,11 @@ def main() -> None:
     )
 
     parser.add_argument("--dataset", required=True, help="Path to ScienceQA problems.json")
+    parser.add_argument(
+        "--pid-splits",
+        default="",
+        help="Optional path to pid_splits.json. If omitted, script auto-discovers sibling file.",
+    )
     parser.add_argument("--image-root", required=True, help="ScienceQA image root")
     parser.add_argument("--split", default="train", choices=["train", "val", "test", "minival"])
     parser.add_argument("--max-items", type=int, default=None)
@@ -310,12 +409,14 @@ def main() -> None:
     )
 
     lightrag_client = create_lightrag_client(config)
+    _initialize_lightrag(lightrag_client)
 
     options = ["A", "B", "C", "D", "E"]
     ingest_dataset(
         dataset_path=args.dataset,
         image_root=args.image_root,
         split=args.split,
+        pid_splits_path=args.pid_splits,
         max_items=args.max_items,
         options=options,
         use_vlm=args.use_vlm,
