@@ -1,6 +1,7 @@
 from retrieval.vector_retrieval import VectorRetrieval
 from retrieval.graph_retrieval import GraphRetrieval
 from retrieval.web_retrieval import WebRetrieval
+from retrieval.lightrag_factory import create_lightrag_client, initialize_lightrag_client
 from agents.summary_agent import SummaryAgent
 from agents.decompose_agent import DecomposeAgent
 
@@ -10,8 +11,10 @@ import json
 class MRetrievalAgent():
     def __init__(self, config):
         self.config = config
-        self.vector_retrieval = VectorRetrieval(config)
-        self.graph_retrieval = GraphRetrieval(config)
+        self.rag_client = create_lightrag_client(config)
+        initialize_lightrag_client(self.rag_client)
+        self.vector_retrieval = VectorRetrieval(config, client=self.rag_client)
+        self.graph_retrieval = GraphRetrieval(config, client=self.rag_client)
         self.web_retrieval = WebRetrieval(config)
         self.sum_agent = SummaryAgent(config)
         self.dec_agent = DecomposeAgent(config)

@@ -1,5 +1,6 @@
 import inspect
 import os
+import asyncio
 from typing import Any, Dict
 
 from lightrag import LightRAG
@@ -180,3 +181,24 @@ def create_lightrag_client(config):
 
     filtered_kwargs = {k: v for k, v in ctor_kwargs.items() if k in supported_params}
     return LightRAG(**filtered_kwargs)
+
+
+def _run_maybe_async(value):
+    if inspect.isawaitable(value):
+        return asyncio.run(value)
+    return value
+
+
+def initialize_lightrag_client(client) -> None:
+    """Initialize LightRAG storages/pipeline when hooks exist.
+
+    Some LightRAG versions require explicit initialization before query/insert,
+    otherwise internal async storage handles can remain unset.
+    """
+    init_fn = getattr(client, "initialize_storages", None)
+    if callable(init_fn):
+        _run_maybe_async(init_fn())
+
+    pipeline_fn = getattr(client, "initialize_pipeline_status", None)
+    if callable(pipeline_fn):
+        _run_maybe_async(pipeline_fn())

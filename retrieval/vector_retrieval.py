@@ -5,11 +5,11 @@ from retrieval.lightrag_factory import create_lightrag_client
 
 
 class VectorRetrieval(BaseRetrieval):
-    def __init__(self, config):
+    def __init__(self, config, client=None):
         self.config = config
         self.mode = getattr(config, 'mode', 'naive')
         self.top_k = getattr(config, 'top_k', 4)
-        self.client = create_lightrag_client(config)
+        self.client = client if client is not None else create_lightrag_client(config)
         self.results = []
 
     def find_top_k(self, query):
