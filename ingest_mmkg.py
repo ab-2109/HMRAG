@@ -170,7 +170,7 @@ def _describe_image_smallvlm(image_path: str, question: str, hint: str, caption:
                 {
                     "type": "text",
                     "text": (
-                        "Extract concise visual evidence for QA retrieval. "
+                        "Describe the image in the best possibly way in 20 words. "
                         "Mention only facts visible in the image.\n\n"
                         f"Question: {question}\n"
                         f"Hint: {hint}\n"
@@ -204,6 +204,7 @@ def _select_qids(
     split: str,
     dataset_path: str,
     pid_splits_path: str = "",
+    start_index: int = 0,
     max_items: Optional[int] = None,
 ) -> List[str]:
     # 1) Explicit pid_splits path from user
@@ -220,6 +221,8 @@ def _select_qids(
                 pid_splits = json.load(f)
             raw = pid_splits.get(split, [])
             qids = [str(qid) for qid in raw if str(qid) in problems]
+            if start_index > 0:
+                qids = qids[start_index:]
             if max_items:
                 qids = qids[:max_items]
             print(f"[ingest] Using pid_splits from {p} ({len(qids)} qids for split='{split}')")
@@ -229,6 +232,8 @@ def _select_qids(
     any_split_field = any("split" in p for p in problems.values())
     if any_split_field:
         qids = [qid for qid, p in problems.items() if p.get("split") == split]
+        if start_index > 0:
+            qids = qids[start_index:]
         if max_items:
             qids = qids[:max_items]
         print(f"[ingest] Using problem['split'] field ({len(qids)} qids for split='{split}')")
@@ -236,6 +241,8 @@ def _select_qids(
 
     # 4) Last resort: ingest everything
     qids = list(problems.keys())
+    if start_index > 0:
+        qids = qids[start_index:]
     if max_items:
         qids = qids[:max_items]
     print(
@@ -250,6 +257,7 @@ def ingest_dataset(
     image_root: str,
     split: str,
     pid_splits_path: str,
+    start_index: int,
     max_items: Optional[int],
     options: List[str],
     use_vlm: bool,
@@ -269,11 +277,13 @@ def ingest_dataset(
         split=split,
         dataset_path=dataset_path,
         pid_splits_path=pid_splits_path,
+        start_index=start_index,
         max_items=max_items,
     )
 
     print(
         f"[ingest] {len(qids)} items selected for split='{split}'"
+        + (f" starting from index {start_index}" if start_index else "")
         + (" (capped by --max-items)" if max_items else "")
     )
 
@@ -367,6 +377,7 @@ def main() -> None:
     )
     parser.add_argument("--image-root", required=True, help="ScienceQA image root")
     parser.add_argument("--split", default="train", choices=["train", "val", "test", "minival"])
+    parser.add_argument("--start-index", type=int, default=0)
     parser.add_argument("--max-items", type=int, default=None)
 
     parser.add_argument("--working-dir", default="./lightrag_workdir")
@@ -438,6 +449,7 @@ def main() -> None:
         image_root=args.image_root,
         split=args.split,
         pid_splits_path=args.pid_splits,
+        start_index=args.start_index,
         max_items=args.max_items,
         options=options,
         use_vlm=args.use_vlm,
