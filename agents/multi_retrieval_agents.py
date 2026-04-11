@@ -21,11 +21,16 @@ class MRetrievalAgent():
     def predict(self, problems, shot_qids, qid):
         problem = problems[qid]
         question = problem['question']
+        debug_retrieval = getattr(self.config, 'debug_retrieval', False)
+        if debug_retrieval:
+            print(f"[agent] qid={qid} question={question}")
         
         # Decompose can return a list of sub-queries or a single query string
         sub_queries = self.dec_agent.decompose(question)
         if isinstance(sub_queries, str):
             sub_queries = [sub_queries]
+        if debug_retrieval:
+            print(f"[agent] qid={qid} sub_queries={sub_queries}")
         
         # Collect retrieval results for all sub-queries
         all_vector_responses = []
@@ -33,6 +38,8 @@ class MRetrievalAgent():
         all_web_responses = []
         
         for sub_q in sub_queries:
+            if debug_retrieval:
+                print(f"[agent] qid={qid} dispatching subquery -> {sub_q}")
             vector_response = self.vector_retrieval.find_top_k(sub_q)
             graph_response = self.graph_retrieval.find_top_k(sub_q)
             web_response = self.web_retrieval.find_top_k(sub_q)

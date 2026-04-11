@@ -1,5 +1,6 @@
 from lightrag import QueryParam
 import inspect
+import traceback
 
 from retrieval.base_retrieval import BaseRetrieval
 from retrieval.lightrag_factory import create_lightrag_client
@@ -34,13 +35,25 @@ class VectorRetrieval(BaseRetrieval):
         Returns:
             str: The retrieval results.
         """
+        debug_retrieval = getattr(self.config, 'debug_retrieval', False)
+        param = self._build_query_param()
+        if debug_retrieval:
+            print(f"[LightRAG:vector] received query={query!r}")
+            print(f"[LightRAG:vector] query param={param}")
         try:
             self.results = self.client.query(
                 query,
-                param=self._build_query_param()
+                param=param
             )
+            if debug_retrieval:
+                preview = str(self.results)
+                if len(preview) > 800:
+                    preview = preview[:800] + "..."
+                print(f"[LightRAG:vector] returned type={type(self.results).__name__} preview={preview}")
         except Exception as e:
             print(f"VectorRetrieval error: {e}")
+            if debug_retrieval:
+                print(traceback.format_exc())
             self.results = f"Vector retrieval failed: {str(e)}"
         return self.results
     
