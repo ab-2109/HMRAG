@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument('--model', type=str, default='gpt3')
     parser.add_argument('--options', type=str, nargs='+', default=["A", "B", "C", "D", "E"])
     # user options
-    parser.add_argument('--test_split', type=str, default='test', choices=['test', 'val', 'minival'])
+    parser.add_argument('--test_split', type=str, default='test', choices=['train', 'test', 'val', 'minival'])
     parser.add_argument('--test_number', type=int, default=-1,
                         help='Number of test problems to run. -1 means all.')
     parser.add_argument('--shot_number', type=int, default=0,
@@ -133,6 +133,7 @@ def main():
 
     agent = MRetrievalAgent(args)
     correct = 0
+    incorrect = 0
     results = {}
     outputs = {}
     failed = []
@@ -158,8 +159,19 @@ def main():
 
         if final_ans == answer:
             correct += 1
+            verdict = "CORRECT"
         else:
+            incorrect += 1
             failed.append(qid)
+            verdict = "INCORRECT"
+
+        processed = correct + incorrect
+        running_acc = (correct / processed) if processed > 0 else 0.0
+        print(
+            f"[pred] qid={qid} pred={final_ans} gold={answer} -> {verdict} "
+            f"| running: {correct} correct / {incorrect} incorrect "
+            f"(acc={running_acc:.4f})"
+        )
 
         if (i + 1) % args.save_every == 0:
             with open(result_file, 'w') as f:
@@ -172,6 +184,7 @@ def main():
     total = len(qids) if not args.debug else min(len(qids), 11)
     print(f"\nResults saved to {result_file}")
     print(f"Number of correct answers: {correct}/{total}")
+    print(f"Number of incorrect answers: {incorrect}/{total}")
     if total > 0:
         print(f"Accuracy: {correct / total:.4f}")
     print(f"Failed question ids: {failed}")

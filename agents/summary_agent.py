@@ -173,7 +173,7 @@ class SummaryAgent:
             padding=True,
             return_tensors="pt",
         )
-        target_device = self._vision_device or torch.device("cpu")
+        target_device = self._vision_device or torch.device("cuda")
         inputs = {k: v.to(target_device) for k, v in inputs.items()}
 
         generated_ids = self._vision_model.generate(**inputs, max_new_tokens=1024)
