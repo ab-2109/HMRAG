@@ -1,6 +1,7 @@
 import inspect
 import os
 import asyncio
+import threading
 from typing import Any, Dict
 
 from lightrag import LightRAG
@@ -185,7 +186,35 @@ def create_lightrag_client(config):
 
 def _run_maybe_async(value):
     if inspect.isawaitable(value):
-        return asyncio.run(value)
+        try:
+            asyncio.get_running_loop()
+            has_running_loop = True
+        except RuntimeError:
+            has_running_loop = False
+
+        if not has_running_loop:
+            return asyncio.run(value)
+
+        # Jupyter/Colab may already have a running loop in this thread.
+        # Run the coroutine in a fresh loop on a helper thread.
+        result_holder = {"value": None, "error": None}
+
+        def _runner():
+            loop = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(loop)
+                result_holder["value"] = loop.run_until_complete(value)
+            except Exception as e:
+                result_holder["error"] = e
+            finally:
+                loop.close()
+
+        t = threading.Thread(target=_runner, daemon=True)
+        t.start()
+        t.join()
+        if result_holder["error"] is not None:
+            raise result_holder["error"]
+        return result_holder["value"]
     return value
 
 
@@ -202,3 +231,9 @@ def initialize_lightrag_client(client) -> None:
     pipeline_fn = getattr(client, "initialize_pipeline_status", None)
     if callable(pipeline_fn):
         _run_maybe_async(pipeline_fn())
+
+
+def create_initialized_lightrag_client(config):
+    client = create_lightrag_client(config)
+    initialize_lightrag_client(client)
+    return client

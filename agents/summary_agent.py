@@ -58,36 +58,39 @@ class SummaryAgent:
 
     def summarize(self, problems, shot_qids, qid, cur_ans) -> str:
         problem = problems[qid]
-        question = problem['question']
         choices = problem["choices"]
-        answer = problem['answer']
         image = problem.get('image', '')
-        caption = problem.get('caption', '')
         split = problem.get("split", "test")
-        
-        most_ans = self.get_most_common_answer(cur_ans)   
-        
-        if len(most_ans) == 1:
-            prediction = self.get_result(most_ans[0])  # 'A', ..., 'E'
-            pred_idx = self.get_pred_idx(prediction, choices, self.config.options)
-        else:
-            if image and image == "image.png":
-                image_path = os.path.join(self.config.image_root, split, qid, image)
-            else:
-                image_path = ""
-            
-            output_text = cur_ans[0] if len(cur_ans) > 0 else ""
-            output_graph = cur_ans[1] if len(cur_ans) > 1 else ""
-            output_web = cur_ans[2] if len(cur_ans) > 2 else ""
-            
-            output = self.refine(output_text, output_graph, output_web, 
-                                 problems, shot_qids, qid, self.config, image_path)
-            if output is None:
-                output = "FAILED"
-            print(f"output: {output}")
 
-            ans_fusion = self.get_result(output)
-            pred_idx = self.get_pred_idx(ans_fusion, choices, self.config.options)
+        if image and image == "image.png":
+            image_path = os.path.join(self.config.image_root, split, qid, image)
+        else:
+            image_path = ""
+
+        output_text = cur_ans[0] if len(cur_ans) > 0 else ""
+        output_graph = cur_ans[1] if len(cur_ans) > 1 else ""
+        output_web = cur_ans[2] if len(cur_ans) > 2 else ""
+
+        output = self.refine(
+            output_text,
+            output_graph,
+            output_web,
+            problems,
+            shot_qids,
+            qid,
+            self.config,
+            image_path,
+        )
+        if output is None:
+            output = "FAILED"
+        print(f"output: {output}")
+
+        ans_fusion = self.get_result(output)
+        if ans_fusion == "FAILED":
+            # Last chance with strict one-token MCQ selection.
+            ans_fusion = self._force_mcq_choice(problems, shot_qids, qid, output_text, output_graph, output_web)
+
+        pred_idx = self.get_pred_idx(ans_fusion, choices, self.config.options)
         return pred_idx, cur_ans
     
     def get_most_common_answer(self, res):
@@ -103,7 +106,21 @@ class SummaryAgent:
     
     def refine(self, output_text, output_graph, output_web, problems, shot_qids, qid, args, image_path):
         prompt = build_prompt(problems, shot_qids, qid, args)
-        prompt = f"{prompt} The answer is A, B, C, D, E or FAILED. \n BECAUSE: "
+        retrieval_context = (
+            "Retrieved evidence:\n"
+            f"[Vector]\n{output_text}\n\n"
+            f"[Graph]\n{output_graph}\n\n"
+            f"[Web]\n{output_web}\n\n"
+        )
+        prompt = (
+            f"{prompt}\n\n"
+            f"{retrieval_context}"
+            "Task: Choose exactly one option (A, B, C, D, or E) based on the evidence above.\n"
+            "If evidence is incomplete, choose the most likely option instead of asking for more information.\n"
+            "Respond in this exact format:\n"
+            "Answer: The answer is <A|B|C|D|E>.\n"
+            "BECAUSE: <brief reason tied to evidence>."
+        )
         
         if not image_path:
             output = self._invoke_text(prompt)
@@ -112,8 +129,10 @@ class SummaryAgent:
             if output:
                 print(f"**** output: {output}")
                 output = self._invoke_text(
-                    f"{output[0]} Summary the above information with format "
-                    f"'Answer: The answer is A, B, C, D, E or FAILED.\n BECAUSE: '"
+                    f"{output[0]}\n"
+                    "Now return only:\n"
+                    "Answer: The answer is <A|B|C|D|E>.\n"
+                    "BECAUSE: <brief reason>."
                 )
             else:
                 # Fallback to text-only if vision model fails
@@ -122,13 +141,36 @@ class SummaryAgent:
     
     def get_result(self, output):
         """Extract the answer letter from model output."""
-        pattern = re.compile(r'The answer is ([A-E])')
-        res = pattern.findall(output)
-        if len(res) == 1:
-            answer = res[0]  # 'A', 'B', ...
-        else:
-            answer = "FAILED"
-        return answer
+        if output is None:
+            return "FAILED"
+        text = str(output)
+        patterns = [
+            re.compile(r'The answer is\s*([A-E])', re.IGNORECASE),
+            re.compile(r'Answer\s*[:\-]\s*([A-E])\b', re.IGNORECASE),
+            re.compile(r'^\s*([A-E])\s*$', re.IGNORECASE),
+        ]
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match:
+                return match.group(1).upper()
+        return "FAILED"
+
+    def _force_mcq_choice(self, problems, shot_qids, qid, output_text, output_graph, output_web):
+        prompt = build_prompt(problems, shot_qids, qid, self.config)
+        forced_prompt = (
+            f"{prompt}\n\n"
+            "Evidence:\n"
+            f"Vector: {output_text}\n"
+            f"Graph: {output_graph}\n"
+            f"Web: {output_web}\n\n"
+            "Return only one uppercase letter with no explanation: A or B or C or D or E."
+        )
+        try:
+            forced_output = self._invoke_text(forced_prompt)
+            return self.get_result(forced_output)
+        except Exception as e:
+            print(f"Warning: force MCQ choice failed: {e}")
+            return "FAILED"
 
     def get_pred_idx(self, prediction, choices, options):
         """
@@ -137,7 +179,8 @@ class SummaryAgent:
         if prediction in options[:len(choices)]:
             return options.index(prediction)
         else:
-            return random.choice(range(len(choices)))
+            # Deterministic fallback avoids run-to-run randomness in evaluation.
+            return 0
 
     def smallvlm_reasoning(self, prompt, image_path):
         """Use SmolVLM model for multimodal reasoning with image."""

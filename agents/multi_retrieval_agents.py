@@ -1,7 +1,7 @@
 from retrieval.vector_retrieval import VectorRetrieval
 from retrieval.graph_retrieval import GraphRetrieval
 from retrieval.web_retrieval import WebRetrieval
-from retrieval.lightrag_factory import create_lightrag_client
+from retrieval.lightrag_factory import create_initialized_lightrag_client
 from agents.summary_agent import SummaryAgent
 from agents.decompose_agent import DecomposeAgent
 
@@ -11,12 +11,26 @@ import json
 class MRetrievalAgent():
     def __init__(self, config):
         self.config = config
-        self.rag_client = create_lightrag_client(config)
-        self.vector_retrieval = VectorRetrieval(config, client=self.rag_client)
-        self.graph_retrieval = GraphRetrieval(config, client=self.rag_client)
+        self.rag_client = create_initialized_lightrag_client(config)
+        self.vector_retrieval = VectorRetrieval(
+            config,
+            client=self.rag_client,
+            refresh_client_callback=self._refresh_rag_client,
+        )
+        self.graph_retrieval = GraphRetrieval(
+            config,
+            client=self.rag_client,
+            refresh_client_callback=self._refresh_rag_client,
+        )
         self.web_retrieval = WebRetrieval(config)
         self.sum_agent = SummaryAgent(config)
         self.dec_agent = DecomposeAgent(config)
+
+    def _refresh_rag_client(self):
+        self.rag_client = create_initialized_lightrag_client(self.config)
+        self.vector_retrieval.client = self.rag_client
+        self.graph_retrieval.client = self.rag_client
+        return self.rag_client
         
     def predict(self, problems, shot_qids, qid):
         problem = problems[qid]
